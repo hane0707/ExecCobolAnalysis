@@ -1,0 +1,10 @@
+C:\dev\00_C#\console\ExecCobolAnalysis\ExecCobolAnalysis\obj\Debug\ExecCobolAnalysis.csprojAssemblyReference.cache
+C:\dev\00_C#\console\ExecCobolAnalysis\ExecCobolAnalysis\obj\Debug\ExecCobolAnalysis.csproj.CoreCompileInputs.cache
+C:\dev\00_C#\console\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\ExecCobolAnalysis.exe.config
+C:\dev\00_C#\console\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\ExecCobolAnalysis.exe
+C:\dev\00_C#\console\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\ExecCobolAnalysis.pdb
+C:\dev\00_C#\console\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\EPPlus.dll
+C:\dev\00_C#\console\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\EPPlus.xml
+C:\dev\00_C#\console\ExecCobolAnalysis\ExecCobolAnalysis\obj\Debug\ExecCobolAnalysis.csproj.CopyComplete
+C:\dev\00_C#\console\ExecCobolAnalysis\ExecCobolAnalysis\obj\Debug\ExecCobolAnalysis.exe
+C:\dev\00_C#\console\ExecCobolAnalysis\ExecCobolAnalysis\obj\Debug\ExecCobolAnalysis.pdb
