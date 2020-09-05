@@ -7,6 +7,8 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.IO;
+using System.Configuration;
+using log4net;
 
 namespace ExecCobolAnalysis
 {
@@ -28,7 +30,8 @@ namespace ExecCobolAnalysis
         #endregion
 
         #region 変数
-        static string OutFileName = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + @"\result.xlsx";
+        static string OutFileName =
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + ConfigurationManager.AppSettings["ResultFilePath"];
         static Encoding Enc = Encoding.GetEncoding("Shift_JIS");
         static int InitRow = 2;
         static string SheetName = string.Empty;
@@ -37,7 +40,7 @@ namespace ExecCobolAnalysis
         static ExcelWorksheet WsMethodInfo; // 関数情報シート
         static Color ColorMethod = Color.RoyalBlue;
         static Color ColorModule = Color.DeepPink;
-        static string[] RetMsg = new string[1];
+        private static readonly ILog _logger = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         #endregion
 
         enum SqlType
@@ -51,14 +54,6 @@ namespace ExecCobolAnalysis
 
         private static int Main(string[] args)
         {
-            SetMessage("No Message.", FLG_OFF);
-
-            if (args.Length < 1)
-            {
-                SetMessage("分析対象のファイルが指定されていません。", FLG_ON);
-                return RETURN_ERR_100;
-            }
-
             // 出力ファイルが使用中ではないかチェック
             try
             {
@@ -69,21 +64,43 @@ namespace ExecCobolAnalysis
             }
             catch (Exception)
             {
-                SetMessage("出力ファイル(" + OutFileName + ")が使用中です。", FLG_ON);
+                _logger.Error($"出力ファイル({OutFileName})が使用中です。");
                 return RETURN_ERR_200;
             }
 
+            // 解析対象ファイルが読み込み可能かチェック
+            if (args.Length < 1)
+            {
+                _logger.Error("解析対象のファイルが指定されていません。");
+                return RETURN_ERR_100;
+            }
+            string file = args[0];
+
+            if (!File.Exists(file))
+            {
+                _logger.Error($"{file}は存在しません。");
+                return RETURN_ERR_100;
+            }
+
+            bool ret = false;
             try
             {
-                bool ret = Exec(args[0]);
-                if (RetMsg[1] == FLG_OFF)
-                    SetMessage("処理終了。", FLG_OFF);
+                _logger.Info($"処理開始。　{file}");
+                ret = Exec(file);
+
             }
             catch (Exception ex)
             {
-                SetMessage(ex.Message, FLG_OFF);
-                return RETURN_ERR_100;
+                _logger.Fatal(ex.Message);
             }
+            finally
+            {
+                if (ret)
+                    _logger.Info("処理正常終了。");
+                else
+                    _logger.Info("処理終了。エラーが発生しています。");
+            }
+
             return RETURN_OK;
         }
 
@@ -247,7 +264,7 @@ namespace ExecCobolAnalysis
                 // モジュール内に関数がない場合は処理終了
                 if (methodList.Count <= 0)
                 {
-                    SetMessage("関数が一つもありません。", FLG_ON);
+                    _logger.Error("ファイル内に関数が一つもありません。");
                     return false;
                 }
                 #endregion
@@ -351,7 +368,7 @@ namespace ExecCobolAnalysis
             }
             catch (Exception ex)
             {
-                SetMessage(ex.Message, FLG_ON);
+                _logger.Fatal(ex.Message);
                 return false;
             }
         }
@@ -441,7 +458,7 @@ namespace ExecCobolAnalysis
             string errorMsg = "(" + SheetName + "シート作成時エラー)";
             if (WsPgmInfo == null)
             {
-                SetMessage("Excelシート変数に値が割り当てられませんでした。" + errorMsg, FLG_ON);
+                _logger.Fatal(errorMsg + "Excelシート変数に値が割り当てられませんでした。");
                 return false;
             }
 
@@ -490,7 +507,7 @@ namespace ExecCobolAnalysis
             }
             catch (Exception ex)
             {
-                SetMessage(ex.Message + errorMsg, FLG_ON);
+                _logger.Fatal(errorMsg + ex.Message);
                 return false;
             }
 
@@ -509,7 +526,7 @@ namespace ExecCobolAnalysis
             string errorMsg = "(" + SheetName + "シート作成時エラー)";
             if (WsMethodInfo == null)
             {
-                SetMessage("Excelシート変数に値が割り当てられませんでした。" + errorMsg, FLG_ON);
+                _logger.Fatal(errorMsg + "Excelシート変数に値が割り当てられませんでした。");
                 return false;
             }
 
@@ -575,7 +592,7 @@ namespace ExecCobolAnalysis
             }
             catch (Exception ex)
             {
-                SetMessage(ex.Message + errorMsg, FLG_ON);
+                _logger.Fatal(errorMsg + ex.Message);
                 return false;
             }
 
@@ -594,7 +611,7 @@ namespace ExecCobolAnalysis
             string errorMsg = "(" + SheetName + "シート作成時エラー)";
             if (WsStruct == null)
             {
-                SetMessage("Excelシート変数に値が割り当てられませんでした。" + errorMsg, FLG_ON);
+                _logger.Fatal(errorMsg + "Excelシート変数に値が割り当てられませんでした。");
                 return false;
             }
 
@@ -616,7 +633,7 @@ namespace ExecCobolAnalysis
             }
             catch (Exception ex)
             {
-                SetMessage(ex.Message + errorMsg, FLG_ON);
+                _logger.Fatal(errorMsg + ex.Message);
                 return false;
             }
 
@@ -863,27 +880,6 @@ namespace ExecCobolAnalysis
                 return str;
             }
             return str.Substring(str.Length - len, len);
-        }
-
-        /// <summary>
-        /// メッセージセット
-        /// </summary>
-        /// <param name="msg"></param>
-        /// <param name="errorFlg"></param>
-        private static void SetMessage(string msg, string errorFlg)
-        {
-            if (String.IsNullOrEmpty(msg))
-                return;
-
-            if(RetMsg.Length < 2)
-            {
-                RetMsg = new string[] { msg, errorFlg };
-            }
-            else
-            {
-                RetMsg[0] = msg;
-                RetMsg[1] = errorFlg;
-            }
         }
         #endregion
 
