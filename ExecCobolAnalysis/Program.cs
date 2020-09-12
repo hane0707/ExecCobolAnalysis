@@ -974,7 +974,7 @@ namespace ExecCobolAnalysis
     /// <summary>
     /// 関数管理クラス
     /// </summary>
-    public partial class Method
+    public class Method
     {
         public string MethodNameP { get; internal set; }
         public string MethodNameL { get; internal set; }
@@ -998,7 +998,7 @@ namespace ExecCobolAnalysis
     /// 参照：https://qiita.com/Chrowa3/items/51e7033aa687c6274ad4
     /// 参照：https://docs.microsoft.com/ja-jp/dotnet/api/system.linq.enumerable.distinct?redirectedfrom=MSDN&view=netcore-3.1#System_Linq_Enumerable_Distinct__1_System_Collections_Generic_IEnumerable___0__
     /// </summary>
-    public partial class CalledMethod : IEquatable<CalledMethod>
+    public class CalledMethod : IEquatable<CalledMethod>
     {
         public string Name { get; }
         public bool ModuleFlg { get; }
@@ -1026,7 +1026,7 @@ namespace ExecCobolAnalysis
     /// <summary>
     /// SQL情報クラス
     /// </summary>
-    public partial class SqlInfo
+    public class SqlInfo
     {
         public string Value { get; internal set; }
         public IEnumerable<TokenInfo> TokenList { get; internal set; }
@@ -1086,7 +1086,10 @@ namespace ExecCobolAnalysis
         }
     }
 
-    public partial class DbInfo : IEquatable<DbInfo>
+    /// <summary>
+    /// DB情報クラス
+    /// </summary>
+    public class DbInfo : IEquatable<DbInfo>
     {
         public string Name_P { get; internal set; }
         public string Name_L { get; internal set; }
