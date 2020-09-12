@@ -20,3 +20,9 @@ C:\dev\00_C#\SourceAnalysis\ExecCobolAnalysis\ExecCobolAnalysis\obj\Debug\ExecCo
 C:\dev\00_C#\SourceAnalysis\ExecCobolAnalysis\ExecCobolAnalysis\obj\Debug\ExecCobolAnalysis.pdb
 C:\dev\00_C#\SourceAnalysis\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\log4net.dll
 C:\dev\00_C#\SourceAnalysis\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\log4net.xml
+C:\dev\00_C#\SourceAnalysis\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\Microsoft.SqlServer.Management.SqlParser.dll
+C:\dev\00_C#\SourceAnalysis\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\TransactSqlHelpers.dll
+C:\dev\00_C#\SourceAnalysis\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\TransactSqlHelpers.pdb
+C:\dev\00_C#\SourceAnalysis\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\Microsoft.SqlServer.Management.SqlParser.pdb
+C:\dev\00_C#\SourceAnalysis\ExecCobolAnalysis\ExecCobolAnalysis\bin\Debug\Microsoft.SqlServer.Management.SqlParser.xml
+C:\dev\00_C#\SourceAnalysis\ExecCobolAnalysis\ExecCobolAnalysis\obj\Debug\ExecCobolAnalysis.exe.config
