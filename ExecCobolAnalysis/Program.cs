@@ -1,18 +1,16 @@
-﻿using OfficeOpenXml;
+﻿using log4net;
+using Microsoft.SqlServer.Management.SqlParser.Parser;
+using OfficeOpenXml;
 using OfficeOpenXml.Style;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.IO;
-using System.Configuration;
-using log4net;
-using Microsoft.SqlServer.Management.SqlParser.Parser;
 using TransactSqlHelpers;
-using log4net.Util;
-using System.Threading;
 
 namespace ExecCobolAnalysis
 {
@@ -46,14 +44,6 @@ namespace ExecCobolAnalysis
         static Color ColorModule = Color.DeepPink;
         private static readonly ILog _logger = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         #endregion
-        enum SqlType
-        {
-            None = 0,
-            Select = 1,
-            Insert = 2,
-            Update = 3,
-            Delete = 4
-        }
         private static int Main(string[] args)
         {
             // 出力ファイルが使用中ではないかチェック
@@ -252,7 +242,7 @@ namespace ExecCobolAnalysis
                                     if (!string.IsNullOrEmpty(sql))
                                     {
                                         tokens = TransactSqlHelpers.Parser.ParseSql(sql);
-                                        SqlInfo sqlInfo = new SqlInfo(sql, tokens, (int)sqlType, methodList[methodIndex].MethodNameP);
+                                        SqlInfo sqlInfo = new SqlInfo(sql, tokens, sqlType, methodList[methodIndex].MethodNameP);
                                         sqlInfoList.Add(sqlInfo);
                                     }
 
@@ -482,18 +472,28 @@ namespace ExecCobolAnalysis
             {
                 int row = 2; // 行番号
 
+                // =================================================================
                 // 各項目のタイトル部分を書き込む
+                // =================================================================
                 // コピー句のタイトルセット
                 SetStyleOfTitle(SHEET_NAME_PGMINFO, "B2:C2", Color.SpringGreen);
                 WsPgmInfo.Cells[row, 2].Value = "COPY句";
-                // SQL変数宣言部のタイトルセット
-                SetStyleOfTitle(SHEET_NAME_PGMINFO, "D2:E2", Color.LightSteelBlue);
-                WsPgmInfo.Cells[row, 4].Value = "使用テーブル";
                 // 呼出モジュールのタイトルセット
-                SetStyleOfTitle(SHEET_NAME_PGMINFO, "F2:F2", Color.Pink);
-                WsPgmInfo.Cells[row, 6].Value = "呼出モジュール";
+                SetStyleOfTitle(SHEET_NAME_PGMINFO, "D2:D2", Color.Pink);
+                WsPgmInfo.Cells[row, 4].Value = "呼出モジュール";
+                // SQL変数宣言部のタイトルセット
+                SetStyleOfTitle(SHEET_NAME_PGMINFO, "E2:K2", Color.LightSteelBlue);
+                WsPgmInfo.Cells[row, 5].Value = "使用DB";
+                WsPgmInfo.Cells[row, 7].Value = "[SELECT]";
+                WsPgmInfo.Cells[row, 8].Value = "[INSERT]";
+                WsPgmInfo.Cells[row, 9].Value = "[UPDATE]";
+                WsPgmInfo.Cells[row, 10].Value = "[DELETE]";
+                WsPgmInfo.Cells[row, 11].Value = "[CREATE]";
+                WsPgmInfo.Cells[row, 7, row, 11].Style.Font.Size = 9;
 
+                // =================================================================
                 // コピー句リストを書き込む
+                // =================================================================
                 foreach (var copy in copyList)
                 {
                     row++;
@@ -501,32 +501,55 @@ namespace ExecCobolAnalysis
                     WsPgmInfo.Cells[row, 3].Value = copy.Value;
                 }
 
-                // 使用DBリストを書き込む
-                SqlInfo _sqlInfo = new SqlInfo();
-                List<string> usedTableList = new List<string>();
-                foreach (var sqlInfo in sqlInfoList)
-                {
-                    // DBリストを取得
-                    List<string> tableList = _sqlInfo.GetUsedTableList(sqlInfo.TokenList);
-                    foreach (string table in tableList)
-                        usedTableList.Add(table);
-                }
-                IEnumerable<string> distinctList = usedTableList.Distinct().OrderBy(x => x);
-
-                row = 2;
-                foreach (string table in distinctList)
-                {
-                    row++;
-                    WsPgmInfo.Cells[row, 4].Value = table;
-                    //WsPgmInfo.Cells[row, 5].Value = ; // todo:DBの論理名を取得
-                }
-
+                // =================================================================
                 // 呼出モジュールリストを書き込む
+                // =================================================================
                 row = 2;
                 foreach (var module in calledModuleList)
                 {
                     row++;
-                    WsPgmInfo.Cells[row, 6].Value = module;
+                    WsPgmInfo.Cells[row, 4].Value = module;
+                }
+
+                // =================================================================
+                // 使用DBリストを書き込む
+                // =================================================================
+                SqlInfo _sqlInfo = new SqlInfo();
+                DbInfo _dbInfo;
+                List<DbInfo> dbInfoList = new List<DbInfo>();
+                foreach (var sqlInfo in sqlInfoList)
+                {
+                    // SQL内で使用されているDBリストを取得
+                    List<string> dbList = _sqlInfo.GetDbList(sqlInfo.TokenList);
+                    // DBの使用されているCRUDをセット
+                    foreach (string table in dbList)
+                    {
+                        int i = dbInfoList.FindIndex(x => x.Name_P == table);
+                        if(i < 0)
+                        {
+                            _dbInfo = new DbInfo(table, sqlInfo.Type);
+                            dbInfoList.Add(_dbInfo);
+                        }
+                        else
+                        {
+                            dbInfoList[i].SetCrudFlg(sqlInfo.Type);
+                        }
+
+                    }
+                }
+                IEnumerable<DbInfo> distinctList = dbInfoList.Distinct().OrderBy(x => x.Name_P);
+
+                row = 2;
+                foreach (var dbInfo in distinctList)
+                {
+                    row++;
+                    WsPgmInfo.Cells[row, 5].Value = dbInfo.Name_P; // DB物理名
+                    //WsPgmInfo.Cells[row, 5].Value = ; // todo:DBの論理名を取得
+                    WsPgmInfo.Cells[row, 7].Value = dbInfo.SelectFlg ? "〇" : string.Empty; // SELECT
+                    WsPgmInfo.Cells[row, 8].Value = dbInfo.InsertFlg ? "〇" : string.Empty; // INSERT
+                    WsPgmInfo.Cells[row, 9].Value = dbInfo.UpdateFlg ? "〇" : string.Empty; // UPDATE
+                    WsPgmInfo.Cells[row, 10].Value = dbInfo.DeleteFlg ? "〇" : string.Empty; // DELETE
+                    WsPgmInfo.Cells[row, 11].Value = dbInfo.CreateFlg ? "〇" : string.Empty; // CREATE
                 }
 
                 WsPgmInfo.Cells.Style.Font.Name = FONT_NAME;
@@ -568,7 +591,7 @@ namespace ExecCobolAnalysis
                 WsMethodInfo.Cells[row, col + 1].Value = "関数名(論理)";
                 WsMethodInfo.Cells[row, col + 2].Value = "開始行数";
                 WsMethodInfo.Cells[row, col + 3].Value = "終了行数";
-                WsMethodInfo.Cells[row, col + 4].Value = "DB更新処理";
+                WsMethodInfo.Cells[row, col + 4].Value = "DB操作";
 
                 int calledMethodCol = 7;
                 for (int i = 1; i <= 20; i++)
@@ -590,8 +613,7 @@ namespace ExecCobolAnalysis
                     {
                         if (method.MethodNameP == sqlInfo.CalledMethod)
                         {
-                            string sqlType = SqlTypeToString((SqlType)sqlInfo.Type);
-                            List<string> usedTableLst = _sqlInfo.GetUsedTableList(sqlInfo.TokenList);
+                            string sqlType = SqlTypeToString(sqlInfo.Type);
                             sqlTypeList.Add(sqlType);
                         }
                     }
@@ -606,7 +628,7 @@ namespace ExecCobolAnalysis
                     WsMethodInfo.Cells[row, col + 2].Value = method.StartIndex;
                     // 終了行数
                     WsMethodInfo.Cells[row, col + 3].Value = method.EndIndex;
-                    // DB更新区分
+                    // DB操作
                     WsMethodInfo.Cells[row, col + 4].Value = sqlTypeString;
                     // 呼出関数
                     foreach (var cm in method.CalledMethod)
@@ -1008,10 +1030,10 @@ namespace ExecCobolAnalysis
     {
         public string Value { get; internal set; }
         public IEnumerable<TokenInfo> TokenList { get; internal set; }
-        public int Type { get; internal set; }
+        public SqlType Type { get; internal set; }
         public string CalledMethod { get; internal set; }
 
-        public SqlInfo(string value, IEnumerable<TokenInfo> tokenList, int type, string calledMethod)
+        public SqlInfo(string value, IEnumerable<TokenInfo> tokenList, SqlType type, string calledMethod)
         {
             Value = value;
             TokenList = tokenList;
@@ -1023,33 +1045,110 @@ namespace ExecCobolAnalysis
         {
         }
 
-        public List<string> GetUsedTableList(IEnumerable<TokenInfo> tokenList)
+        public List<string> GetDbList(IEnumerable<TokenInfo> tokenList)
         {
-            List<string> tableList = new List<string>();
-            bool inFromFlg = false;
+            List<string> dbList = new List<string>();
+            bool dbAddFlg1 = false;
+            bool dbAddFlg2 = false;
 
             foreach (var token in tokenList)
             {
                 if (token.Token == Tokens.TOKEN_FROM || token.Token == Tokens.TOKEN_JOIN)
                 {
-                    inFromFlg = true;
+                    dbAddFlg1 = true;
+                    continue;
+                }
+                if (dbAddFlg1 && token.Token == Tokens.TOKEN_ID)
+                {
+                    dbList.Add(token.Sql);
+                    continue;
+                }
+                if (dbAddFlg1 && token.Token != Tokens.TOKEN_ID)
+                {
+                    dbAddFlg1 = false;
                     continue;
                 }
 
-                if (inFromFlg && token.Token == Tokens.TOKEN_ID)
+                if(token.Token == Tokens.TOKEN_INSERT || token.Token == Tokens.TOKEN_UPDATE || token.Token == Tokens.TOKEN_CREATE)
                 {
-                    tableList.Add(token.Sql);
+                    dbAddFlg2 = true;
                     continue;
                 }
-
-                if (inFromFlg && token.Token != Tokens.TOKEN_ID)
+                if(dbAddFlg2 && token.Token == Tokens.TOKEN_ID)
                 {
-                    inFromFlg = false;
+                    dbList.Add(token.Sql);
+                    dbAddFlg2 = false;
                     continue;
                 }
             }
 
-            return tableList;
+            return dbList;
         }
     }
+
+    public partial class DbInfo : IEquatable<DbInfo>
+    {
+        public string Name_P { get; internal set; }
+        public string Name_L { get; internal set; }
+        public bool SelectFlg { get; internal set; } = false;
+        public bool InsertFlg { get; internal set; } = false;
+        public bool UpdateFlg { get; internal set; } = false;
+        public bool DeleteFlg { get; internal set; } = false;
+        public bool CreateFlg { get; internal set; } = false;
+
+        public DbInfo(string name, SqlType type)
+        {
+            Name_P = name;
+            // todo:論理名取得ロジックを追加する
+            // Name_L = "";
+            SetCrudFlg(type);
+        }
+
+        public void SetCrudFlg(SqlType type)
+        {
+            switch (type)
+            {
+                case SqlType.Select:
+                    SelectFlg = true;
+                    break;
+                case SqlType.Insert:
+                    InsertFlg = true;
+                    break;
+                case SqlType.Update:
+                    UpdateFlg = true;
+                    break;
+                case SqlType.Delete:
+                    DeleteFlg = true;
+                    break;
+                case SqlType.Create:
+                    CreateFlg = true;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        public override int GetHashCode()
+        {
+            return this.Name_P.GetHashCode();
+        }
+
+        bool IEquatable<DbInfo>.Equals(DbInfo cm)
+        {
+            if (cm == null)
+                return false;
+            return (this.Name_P == cm.Name_P);
+        }
+
+    }
+}
+
+public enum SqlType : int
+{
+    None = 0,
+    Select = 1,
+    Insert = 2,
+    Update = 3,
+    Delete = 4,
+    Create = 5
 }
