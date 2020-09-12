@@ -457,9 +457,9 @@ namespace ExecCobolAnalysis
         #endregion
 
         #region プログラム情報描画
-        private static bool EditPgmInfoSheet(Dictionary<string, string> copyList
-                                    , List<SqlInfo> sqlInfoList
-                                    , List<string> calledModuleList)
+        private static bool EditPgmInfoSheet(IReadOnlyDictionary<string, string> copyList
+                                    , IEnumerable<SqlInfo> sqlInfoList
+                                    , IEnumerable<string> calledModuleList)
         {
             string errorMsg = "(" + SheetName + "シート作成時エラー)";
             if (WsPgmInfo == null)
@@ -520,7 +520,7 @@ namespace ExecCobolAnalysis
                 foreach (var sqlInfo in sqlInfoList)
                 {
                     // SQL内で使用されているDBリストを取得
-                    List<string> dbList = _sqlInfo.GetDbList(sqlInfo.TokenList);
+                    IEnumerable<string> dbList = _sqlInfo.GetDbList(sqlInfo.TokenList);
                     // DBの使用されているCRUDをセット
                     foreach (string table in dbList)
                     {
@@ -571,7 +571,7 @@ namespace ExecCobolAnalysis
         /// </summary>
         /// <param name="methodList"></param>
         /// <returns></returns>
-        private static bool EditMethodInfoSheet(List<Method> methodList, List<SqlInfo> sqlInfoList)
+        private static bool EditMethodInfoSheet(IEnumerable<Method> methodList, IReadOnlyCollection<SqlInfo> sqlInfoList)
         {
             string errorMsg = "(" + SheetName + "シート作成時エラー)";
             if (WsMethodInfo == null)
@@ -787,7 +787,7 @@ namespace ExecCobolAnalysis
         /// <param name="methodList"></param>
         /// <param name="method"></param>
         /// <returns></returns>
-        private static int GetMethodIndex(List<Method> methodList, CalledMethod cm)
+        private static int GetMethodIndex(IReadOnlyCollection<Method> methodList, CalledMethod cm)
         {
             if (cm.ModuleFlg)
             {
