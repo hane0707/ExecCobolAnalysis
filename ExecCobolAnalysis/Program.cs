@@ -251,10 +251,13 @@ namespace ExecCobolAnalysis
                                 }
 
                                 // SQL文の取得
-                                foreach (var val in arrWord)
+                                StringBuilder str = new StringBuilder();
+                                str.Append(sql);
+                                foreach (string val in arrWord)
                                 {
-                                    sql += val + " ";
+                                    str.Append(val + " ");
                                 }
+                                sql = str.ToString();
                             }
 
                             // 関数の終了行を特定
