@@ -44,6 +44,16 @@ namespace ExecCobolAnalysis
         static Color ColorModule = Color.DeepPink;
         private static readonly ILog _logger = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         #endregion
+
+        enum Division
+        {
+            NONE = -1,
+            IDENTIFICATION = 1,
+            ENVIRONMENT = 2,
+            DATA = 3,
+            PROCEDURE = 4
+        }
+
         private static int Main(string[] args)
         {
             // 出力ファイルが使用中ではないかチェック
@@ -113,6 +123,7 @@ namespace ExecCobolAnalysis
                 using (StreamReader sr = new StreamReader(file, Enc))
                 {
                     int fileIndex = 0;
+                    Division division = Division.NONE;
                     int methodIndex = -1;
                     bool inMethodErea = false;
                     bool inSqlErea = false;
@@ -131,14 +142,19 @@ namespace ExecCobolAnalysis
                         // テキストをスペースで区切った配列を作成
                         string[] arrWord = fmtLine.Split(' ');
 
-                        // 対象外句はスルー
-                        if (!CheckLine(arrWord))
+                        // プログラム部変更の判定　※すでに手続き部にいる場合は必用なし
+                        if(division != Division.PROCEDURE)
                         {
-                            continue;
+                            Division ret = CheckDivisionChanged(arrWord);
+                            division = (ret != Division.NONE) ? ret : division;
                         }
 
+                        // 対象外句はスルー
+                        if (!CheckExcludedWords(arrWord, division))
+                            continue;
+
                         // コピー句を特定（特定行の1行手前がコメント行だと仮定する）
-                        if (arrWord[0] == "COPY")
+                        if (division == Division.DATA && arrWord[0] == "COPY")
                         {
                             string copyKey = GetArrayWord(arrWord, 1);
                             string comLine = GetComment(file, fileIndex - 2);
@@ -382,32 +398,77 @@ namespace ExecCobolAnalysis
         }
 
         /// <summary>
-        /// 対象外句の判定
+        /// プログラム部の判定
         /// </summary>
         /// <param name="arrWord"></param>
         /// <returns></returns>
-        private static bool CheckLine(string[] arrWord)
+        private static Division CheckDivisionChanged(string[] arrWord)
+        {
+            string checkText = String.Join(" ", arrWord).Replace(".", "");
+
+            switch (checkText)
+            {
+                // 見出し部
+                case "IDENTIFICATION DIVISION":
+                    return Division.IDENTIFICATION;
+                // 環境部
+                case "ENVIRONMENT DIVISION":
+                    return Division.ENVIRONMENT;
+                // データ部
+                case "DATA DIVISION":
+                    return Division.DATA;
+                // 手続き部
+                case "PROCEDURE DIVISION":
+                    return Division.PROCEDURE;
+                default:
+                    return Division.NONE;
+            }
+        }
+
+        /// <summary>
+        /// 対象外句の判定
+        /// </summary>
+        /// <param name="arrWord"></param>
+        /// <param name="division"></param>
+        /// <returns></returns>
+        private static bool CheckExcludedWords(string[] arrWord, Division division)
         {
             string checkText = arrWord[0].Replace(".", "");
 
-            // 空行、コメント行、SQL行、その他対象外句はスルー
-            if (checkText == string.Empty || Left(checkText, 1) == COM_PREFIX
-                    // 見出し部
-                    || checkText == "IDENTIFICATION" || checkText == "PROGRAM-ID"
-                    || checkText == "AUTHOR" || checkText == "DATE-WRITTEN"
-                    || checkText == "DATE-COMPILED"
-                    // 環境部
-                    || checkText == "ENVIRONMENT" || checkText == "CONFIGURATION"
-                    || checkText == "SOURCE-COMPUTER" || checkText == "OBJECT-COMPUTER"
-                    || checkText == "INPUT-OUTPUT" || checkText == "FILE-CONTROL"
-                    // データ部
-                    || checkText == "DATA" || checkText == "FILE"
-                    || checkText == "WORKING-STORAGE" || checkText == "LINKAGE"
-                    || checkText == "REPORT" || checkText == "SCREEN"
-                    // 手続き部
-                    || checkText == "DISPLAY")
-            {
+            // 共通
+            if (checkText == string.Empty || Left(checkText, 1) == COM_PREFIX)
                 return false;
+
+            switch (division)
+            {
+                // 見出し部
+                case Division.IDENTIFICATION:
+                    if (checkText == "IDENTIFICATION" || checkText == "PROGRAM-ID"
+                            || checkText == "AUTHOR" || checkText == "DATE-WRITTEN"
+                            || checkText == "DATE-COMPILED")
+                        return false;
+                    break;
+                // 環境部
+                case Division.ENVIRONMENT:
+                    if (checkText == "ENVIRONMENT" || checkText == "CONFIGURATION"
+                            || checkText == "SOURCE-COMPUTER" || checkText == "OBJECT-COMPUTER"
+                            || checkText == "INPUT-OUTPUT" || checkText == "FILE-CONTROL")
+                        return false;
+                    break;
+                // データ部
+                case Division.DATA:
+                    if (checkText == "DATA" || checkText == "FILE"
+                            || checkText == "WORKING-STORAGE" || checkText == "LINKAGE"
+                            || checkText == "REPORT" || checkText == "SCREEN")
+                        return false;
+                    break;
+                // 手続き部
+                case Division.PROCEDURE:
+                    if (checkText == "DISPLAY")
+                        return false;
+                    break;
+                default:
+                    break;
             }
 
             return true;
