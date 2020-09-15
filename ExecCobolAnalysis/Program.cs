@@ -102,7 +102,6 @@ namespace ExecCobolAnalysis
             {
                 List<Method> methodList = new List<Method>();
                 Dictionary<string, string> copyList = new Dictionary<string, string>();
-                Dictionary<string, string> sqlDeclareList = new Dictionary<string, string>();
                 List<string> calledModuleList = new List<string>();
                 List<IEnumerable<TokenInfo>> SqlTokenList = new List<IEnumerable<TokenInfo>>();
                 List<SqlInfo> sqlInfoList = new List<SqlInfo>();
@@ -115,7 +114,6 @@ namespace ExecCobolAnalysis
                 {
                     int fileIndex = 0;
                     int methodIndex = -1;
-                    bool inDbDeclareErea = false;
                     bool inMethodErea = false;
                     bool inSqlErea = false;
                     string sql = string.Empty;
@@ -147,33 +145,6 @@ namespace ExecCobolAnalysis
                             if (!copyList.ContainsKey(copyKey))
                                 copyList.Add(copyKey, comLine);
                             continue;
-                        }
-
-                        // SQL変数宣言部（開始）の特定
-                        if (String.Join(" ", arrWord) == "EXEC SQL BEGIN DECLARE SECTION END-EXEC")
-                        {
-                            inDbDeclareErea = true;
-                            continue;
-                        }
-
-                        if (inDbDeclareErea)
-                        {
-                            // SQL変数宣言部の特定（特定行の1行手前がコメント行だと仮定する）
-                            string sqlDeclareKey = GetArrayWord(arrWord, 3);
-                            if (String.Join(" ", arrWord) == "EXEC SQL COPY " + sqlDeclareKey + " END-EXEC")
-                            {
-                                string comLine = GetComment(file, fileIndex - 2);
-                                if (!sqlDeclareList.ContainsKey(sqlDeclareKey))
-                                    sqlDeclareList.Add(sqlDeclareKey, comLine);
-                                continue;
-                            }
-
-                            // SQL変数宣言部（終了）の特定
-                            if (String.Join(" ", arrWord) == "EXEC SQL END DECLARE SECTION END-EXEC")
-                            {
-                                inDbDeclareErea = false;
-                                continue;
-                            }
                         }
 
                         // 関数の開始行を特定
