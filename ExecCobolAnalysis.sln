@@ -5,8 +5,6 @@ VisualStudioVersion = 16.0.30413.136
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExecCobolAnalysis", "ExecCobolAnalysis\ExecCobolAnalysis.csproj", "{A61B0857-136E-4EB6-BDEB-45067B59D1E2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TransactSqlHelpers", "..\TransactSqlHelpers\TransactSqlHelpers.csproj", "{F94E0E70-46D7-46F9-B7C5-5543D2BE46C0}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -17,10 +15,6 @@ Global
 		{A61B0857-136E-4EB6-BDEB-45067B59D1E2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A61B0857-136E-4EB6-BDEB-45067B59D1E2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A61B0857-136E-4EB6-BDEB-45067B59D1E2}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F94E0E70-46D7-46F9-B7C5-5543D2BE46C0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F94E0E70-46D7-46F9-B7C5-5543D2BE46C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F94E0E70-46D7-46F9-B7C5-5543D2BE46C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F94E0E70-46D7-46F9-B7C5-5543D2BE46C0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

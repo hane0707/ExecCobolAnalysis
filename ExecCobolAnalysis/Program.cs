@@ -153,56 +153,82 @@ namespace ExecCobolAnalysis
                         if (!CheckExcludedWords(arrWord, division))
                             continue;
 
-                        // コピー句を特定（特定行の1行手前がコメント行だと仮定する）
-                        if (division == Division.DATA && arrWord[0] == "COPY")
+                        switch (division)
                         {
-                            string copyKey = GetArrayWord(arrWord, 1);
-                            string comLine = GetComment(file, fileIndex - 2);
-                            if (!copyList.ContainsKey(copyKey))
-                                copyList.Add(copyKey, comLine);
-                            continue;
-                        }
-
-                        // 関数の開始行を特定
-                        if (arrWord[arrWord.Length - 1] == METHOD_START)
-                        {
-                            methodIndex++;
-                            Method m = new Method(arrWord[0], fileIndex, -1);
-                            methodList.Add(m);
-                            inMethodErea = true;
-
-                            // 関数名の論理名の特定（関数開始行の2行手前がコメント行だと仮定する）
-                            // ※関数開始行の3行前までを読み飛ばし、次の1行（＝コメント行）を読み込む
-                            methodList[methodIndex].MethodNameL = GetComment(file, fileIndex - 3);
-                            continue;
-                        }
-
-                        if (inMethodErea)
-                        {
-                            // 呼出関数・モジュールを特定
-                            if ((arrWord[0] == "PERFORM" && arrWord[1] != "VARYING") || arrWord[0] == "CALL")
-                            {
-                                bool moduleFlg = (arrWord[0] == "CALL") ? true : false;
-                                string name = arrWord[1].Replace("'", "");
-
-                                if (moduleFlg)
-                                    calledModuleList.Add(name);
-
-                                methodList[methodIndex].CalledMethod.Add(new CalledMethod(name, moduleFlg));
+                            case Division.NONE:
                                 continue;
-                            }
-
-                            // SQL開始行を特定
-                            if (String.Join(" ", arrWord) == "EXEC SQL")
-                            {
-                                inSqlErea = true;
-                                sql = string.Empty;
-                                sqlType = SqlType.None;
+                            case Division.IDENTIFICATION:
                                 continue;
-                            }
+                            case Division.ENVIRONMENT:
+                                continue;
+                            case Division.DATA:
+                                // コピー句を特定（特定行の1行手前がコメント行だと仮定する）
+                                if (arrWord[0] == "COPY")
+                                {
+                                    string copyKey = GetArrayWord(arrWord, 1);
+                                    string comLine = GetComment(file, fileIndex - 2);
+                                    if (!copyList.ContainsKey(copyKey))
+                                        copyList.Add(copyKey, comLine);
+                                }
+                                continue;
+                            case Division.PROCEDURE:
+                                // 関数の開始行を特定
+                                if (arrWord[arrWord.Length - 1] == METHOD_START)
+                                {
+                                    methodIndex++;
+                                    Method m = new Method(arrWord[0], fileIndex, -1);
+                                    methodList.Add(m);
+                                    inMethodErea = true;
 
-                            if (inSqlErea)
-                            {
+                                    // 関数名の論理名の特定（関数開始行の2行手前がコメント行だと仮定する）
+                                    // ※関数開始行の3行前までを読み飛ばし、次の1行（＝コメント行）を読み込む
+                                    methodList[methodIndex].MethodNameL = GetComment(file, fileIndex - 3);
+                                    continue;
+                                }
+
+                                // =================================================================
+                                // 関数内を解析
+                                // =================================================================
+                                if (!inMethodErea)
+                                    continue;
+
+                                // 呼出関数・モジュールを特定
+                                if ((arrWord[0] == "PERFORM" && arrWord[1] != "VARYING") || arrWord[0] == "CALL")
+                                {
+                                    bool moduleFlg = (arrWord[0] == "CALL") ? true : false;
+                                    string name = arrWord[1].Replace("'", "");
+
+                                    if (moduleFlg)
+                                        calledModuleList.Add(name);
+
+                                    methodList[methodIndex].CalledMethod.Add(new CalledMethod(name, moduleFlg));
+                                    continue;
+                                }
+
+                                // 関数の終了行を特定
+                                if (arrWord[0] == methodList[methodIndex].MethodNameP + METHOD_END)
+                                {
+                                    methodList[methodIndex].CalledMethod = methodList[methodIndex].CalledMethod.Distinct().ToList();
+                                    methodList[methodIndex].EndIndex = fileIndex;
+                                    inMethodErea = false;
+                                    continue;
+                                }
+
+                                // SQL開始行を特定
+                                if (String.Join(" ", arrWord) == "EXEC SQL")
+                                {
+                                    inSqlErea = true;
+                                    sql = string.Empty;
+                                    sqlType = SqlType.None;
+                                    continue;
+                                }
+
+                                // =================================================================
+                                // SQL内を解析
+                                // =================================================================
+                                if (!inSqlErea)
+                                    continue;
+
                                 // SQLの処理区分を特定
                                 switch (arrWord[0])
                                 {
@@ -245,16 +271,10 @@ namespace ExecCobolAnalysis
                                     str.Append(val + " ");
                                 }
                                 sql = str.ToString();
-                            }
 
-                            // 関数の終了行を特定
-                            if (arrWord[0] == methodList[methodIndex].MethodNameP + METHOD_END)
-                            {
-                                methodList[methodIndex].CalledMethod = methodList[methodIndex].CalledMethod.Distinct().ToList();
-                                methodList[methodIndex].EndIndex = fileIndex;
-                                inMethodErea = false;
                                 continue;
-                            }
+                            default:
+                                continue;
                         }
                     }
                 }
@@ -278,7 +298,9 @@ namespace ExecCobolAnalysis
                     if (index == 0) { method1.CalledFlg = true; }
                     foreach (var method2 in methodList)
                     {
-                        if (index == methodList.IndexOf(method2)) { continue; }
+                        if (index == methodList.IndexOf(method2))
+                            continue;
+
                         foreach (var cm in method2.CalledMethod)
                         {
                             if (method1.MethodNameP == cm.Name)
@@ -404,21 +426,22 @@ namespace ExecCobolAnalysis
         /// <returns></returns>
         private static Division CheckDivisionChanged(string[] arrWord)
         {
-            string checkText = String.Join(" ", arrWord).Replace(".", "");
+            if (arrWord.Length < 2 || arrWord[1].Replace(".", "") != "DIVISION")
+                return Division.NONE;
 
-            switch (checkText)
+            switch (arrWord[0])
             {
                 // 見出し部
-                case "IDENTIFICATION DIVISION":
+                case "IDENTIFICATION":
                     return Division.IDENTIFICATION;
                 // 環境部
-                case "ENVIRONMENT DIVISION":
+                case "ENVIRONMENT":
                     return Division.ENVIRONMENT;
                 // データ部
-                case "DATA DIVISION":
+                case "DATA":
                     return Division.DATA;
                 // 手続き部
-                case "PROCEDURE DIVISION":
+                case "PROCEDURE":
                     return Division.PROCEDURE;
                 default:
                     return Division.NONE;
