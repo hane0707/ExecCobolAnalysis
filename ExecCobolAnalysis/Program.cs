@@ -5,6 +5,7 @@ using OfficeOpenXml.Style;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
+using System.Data;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -32,9 +33,12 @@ namespace ExecCobolAnalysis
         #endregion
 
         #region 変数
-        static string OutFileName =
+        static string ResultFileName =
             Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + ConfigurationManager.AppSettings["ResultFilePath"];
-        static Encoding Enc = Encoding.GetEncoding("Shift_JIS");
+        static string DbDifineFileName =
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + ConfigurationManager.AppSettings["DbDifineFilePath"];
+        static Encoding EncShiftJis = Encoding.GetEncoding("Shift_JIS");
+        static Encoding EncUtf8 = Encoding.UTF8;
         static int InitRow = 2;
         static string SheetName = string.Empty;
         static ExcelWorksheet WsPgmInfo; // プログラム情報シート
@@ -59,14 +63,14 @@ namespace ExecCobolAnalysis
             // 出力ファイルが使用中ではないかチェック
             try
             {
-                if (File.Exists(OutFileName))
+                if (File.Exists(ResultFileName))
                 {
-                    using (Stream st = new FileStream(OutFileName, FileMode.Open)) { }
+                    using (Stream st = new FileStream(ResultFileName, FileMode.Open)) { }
                 }
             }
             catch (Exception)
             {
-                _logger.Error($"出力ファイル({OutFileName})が使用中です。");
+                _logger.Error($"出力ファイル({ResultFileName})が使用中です。");
                 return RETURN_ERR_200;
             }
 
@@ -120,7 +124,7 @@ namespace ExecCobolAnalysis
                 // 前処理①（関数の一覧をリスト化）
                 // =================================================================
                 #region 前処理①
-                using (StreamReader sr = new StreamReader(file, Enc))
+                using (StreamReader sr = new StreamReader(file, EncShiftJis))
                 {
                     int fileIndex = 0;
                     Division division = Division.NONE;
@@ -356,7 +360,7 @@ namespace ExecCobolAnalysis
                 // Excelファイル作成
                 // =================================================================
                 // 出力ファイル準備（実行ファイルと同じフォルダに出力される）
-                FileInfo newFile = new FileInfo(OutFileName);
+                FileInfo newFile = new FileInfo(ResultFileName);
 
                 // Excelファイル作成
                 using (ExcelPackage package = new ExcelPackage(newFile))
@@ -506,7 +510,7 @@ namespace ExecCobolAnalysis
         /// <returns></returns>
         private static string GetComment(string file, int comIndex)
         {
-            string comLine = File.ReadAllLines(file, Enc).Skip(comIndex).Take(1).First();
+            string comLine = File.ReadAllLines(file, EncShiftJis).Skip(comIndex).Take(1).First();
             if (Mid(comLine, 7, 1) == COM_PREFIX)
                 return FormatLine(comLine, true);
             else
@@ -572,6 +576,9 @@ namespace ExecCobolAnalysis
                 // =================================================================
                 // 使用DBリストを書き込む
                 // =================================================================
+                // DB定義一覧を取得
+                DataTable dt = GetDbDefine();
+
                 SqlInfo _sqlInfo = new SqlInfo();
                 DbInfo _dbInfo;
                 List<DbInfo> dbInfoList = new List<DbInfo>();
@@ -580,12 +587,12 @@ namespace ExecCobolAnalysis
                     // SQL内で使用されているDBリストを取得
                     IEnumerable<string> dbList = _sqlInfo.GetDbList(sqlInfo.TokenList);
                     // DBの使用されているCRUDをセット
-                    foreach (string table in dbList)
+                    foreach (string dbName in dbList)
                     {
-                        int i = dbInfoList.FindIndex(x => x.Name_P == table);
+                        int i = dbInfoList.FindIndex(x => x.Name_P == dbName);
                         if(i < 0)
                         {
-                            _dbInfo = new DbInfo(table, sqlInfo.Type);
+                            _dbInfo = new DbInfo(dbName, sqlInfo.Type, dt);
                             dbInfoList.Add(_dbInfo);
                         }
                         else
@@ -602,7 +609,7 @@ namespace ExecCobolAnalysis
                 {
                     row++;
                     WsPgmInfo.Cells[row, 5].Value = dbInfo.Name_P; // DB物理名
-                    //WsPgmInfo.Cells[row, 5].Value = ; // todo:DBの論理名を取得
+                    WsPgmInfo.Cells[row, 6].Value = dbInfo.Name_L; // DB論理名
                     WsPgmInfo.Cells[row, 7].Value = dbInfo.SelectFlg ? "〇" : string.Empty; // SELECT
                     WsPgmInfo.Cells[row, 8].Value = dbInfo.InsertFlg ? "〇" : string.Empty; // INSERT
                     WsPgmInfo.Cells[row, 9].Value = dbInfo.UpdateFlg ? "〇" : string.Empty; // UPDATE
@@ -620,6 +627,44 @@ namespace ExecCobolAnalysis
             }
 
             return true;
+        }
+
+        private static DataTable GetDbDefine()
+        {
+            // データテーブルを作成
+            DataTable dt = new DataTable();
+            dt.Columns.Add("Table_P");
+            dt.Columns.Add("Table_L");
+            dt.Columns.Add("Column_P");
+            dt.Columns.Add("Column_L");
+
+            // DB定義一覧ファイルの存在チェック（なくても処理は止めない）
+            if (!File.Exists(DbDifineFileName))
+            {
+                _logger.Error($"{DbDifineFileName}は存在しません。");
+                return dt;
+            }
+
+            // DB定義一覧を取得
+            using (StreamReader sr = new StreamReader(DbDifineFileName, EncUtf8))
+            {
+                // 読み込んだ行をデータテーブルにセット
+                while (sr.Peek() >= 0)
+                {
+                    string[] line = sr.ReadLine().Split(',');
+                    if (line.Length != 4)
+                        continue;
+
+                    DataRow dr = dt.NewRow();
+                    dr["Table_P"] = line[0];
+                    dr["Table_L"] = line[1];
+                    dr["Column_P"] = line[2];
+                    dr["Column_L"] = line[3];
+                    dt.Rows.Add(dr);
+                }
+            }
+
+            return dt;
         }
         #endregion
 
@@ -1157,11 +1202,15 @@ namespace ExecCobolAnalysis
         public bool DeleteFlg { get; internal set; } = false;
         public bool CreateFlg { get; internal set; } = false;
 
-        public DbInfo(string name, SqlType type)
+        public DbInfo(string name, SqlType type, DataTable dt)
         {
             Name_P = name;
-            // todo:論理名取得ロジックを追加する
-            // Name_L = "";
+            Name_L = string.Empty;
+            foreach (DataRow dr in dt.Rows)
+            {
+                if (name == dr["Table_P"].ToString())
+                    Name_L = dr["Table_L"].ToString();
+            }
             SetCrudFlg(type);
         }
 
