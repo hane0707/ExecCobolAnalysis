@@ -17,21 +17,6 @@ namespace ExecCobolAnalysis
 {
     class Program
     {
-        #region 定数
-        const string COM_PREFIX = "*";
-        const string METHOD_START = "SECTION";
-        const string METHOD_END = "-999";
-        const string FONT_NAME = "Meiryo UI";
-        const string SHEET_NAME_PGMINFO = "PGM情報";
-        const string SHEET_NAME_METHODINFO = "関数情報";
-        const string SHEET_NAME_STRUCT = "構造図";
-        const string FLG_ON = "1";
-        const string FLG_OFF = "0";
-        const int RETURN_OK = 0;
-        const int RETURN_ERR_100 = 100;
-        const int RETURN_ERR_200 = 200;
-        #endregion
-
         #region 変数
         static string ResultFileName =
             Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + ConfigurationManager.AppSettings["ResultFilePath"];
@@ -47,6 +32,10 @@ namespace ExecCobolAnalysis
         static Color ColorMethod = Color.RoyalBlue;
         static Color ColorModule = Color.DeepPink;
         private static readonly ILog _logger = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        static Regex RegexIdentification = new Regex("(IDENTIFICATION|PROGRAM-ID|AUTHOR|DATE-WRITTEN|DATE-COMPILED)", RegexOptions.Compiled);
+        static Regex RegexEnvironment = new Regex("(ENVIRONMENT|CONFIGURATION|SOURCE-COMPUTER|OBJECT-COMPUTER|INPUT-OUTPUT|FILE-CONTROL)", RegexOptions.Compiled);
+        static Regex RegexData = new Regex("(DATA|FILE|WORKING-STORAGE|REPORT|SCREEN)", RegexOptions.Compiled);
+        static Regex RegexPROCEDURE = new Regex("DISPLAY", RegexOptions.Compiled);
         #endregion
 
         enum Division
@@ -71,21 +60,21 @@ namespace ExecCobolAnalysis
             catch (Exception)
             {
                 _logger.Error($"出力ファイル({ResultFileName})が使用中です。");
-                return RETURN_ERR_200;
+                return CommonConst.RETURN_ERR_200;
             }
 
             // 解析対象ファイルが読み込み可能かチェック
             if (args.Length < 1)
             {
                 _logger.Error("解析対象のファイルが指定されていません。");
-                return RETURN_ERR_100;
+                return CommonConst.RETURN_ERR_100;
             }
             string file = args[0];
 
             if (!File.Exists(file))
             {
                 _logger.Error($"{file}は存在しません。");
-                return RETURN_ERR_100;
+                return CommonConst.RETURN_ERR_100;
             }
 
             bool ret = false;
@@ -107,7 +96,7 @@ namespace ExecCobolAnalysis
                     _logger.Info("処理終了。エラーが発生しています。");
             }
 
-            return RETURN_OK;
+            return CommonConst.RETURN_OK;
         }
 
         private static bool Exec(string file)
@@ -177,7 +166,7 @@ namespace ExecCobolAnalysis
                                 continue;
                             case Division.PROCEDURE:
                                 // 関数の開始行を特定
-                                if (arrWord[arrWord.Length - 1] == METHOD_START)
+                                if (arrWord[arrWord.Length - 1] == "SECTION")
                                 {
                                     methodIndex++;
                                     Method m = new Method(arrWord[0], fileIndex, -1);
@@ -210,7 +199,7 @@ namespace ExecCobolAnalysis
                                 }
 
                                 // 関数の終了行を特定
-                                if (arrWord[0] == methodList[methodIndex].MethodNameP + METHOD_END)
+                                if (arrWord[0] == methodList[methodIndex].MethodNameP + "-999")
                                 {
                                     methodList[methodIndex].CalledMethod = methodList[methodIndex].CalledMethod.Distinct().ToList();
                                     methodList[methodIndex].EndIndex = fileIndex;
@@ -368,19 +357,19 @@ namespace ExecCobolAnalysis
                     bool ret = false;
 
                     // プログラム情報シート作成・編集（シート名：PGM情報_{読込ファイル名}）
-                    WsPgmInfo = AddSheet(package, SHEET_NAME_PGMINFO, file);
+                    WsPgmInfo = AddSheet(package, CommonConst.SHEET_NAME_PGMINFO, file);
                     ret = EditPgmInfoSheet(copyList, sqlInfoList, calledModuleList);
 
                     if (!ret) { return false; }
 
                     // 関数情報シート作成・編集（シート名：関数情報_{読込ファイル名}）
-                    WsMethodInfo = AddSheet(package, SHEET_NAME_METHODINFO, file);
+                    WsMethodInfo = AddSheet(package, CommonConst.SHEET_NAME_METHODINFO, file);
                     ret = EditMethodInfoSheet(methodList, sqlInfoList);
 
                     if (!ret) { return false; }
 
                     // 構造図シート作成・編集（シート名：構造図_{読込ファイル名}）
-                    WsStruct = AddSheet(package, SHEET_NAME_STRUCT, file);
+                    WsStruct = AddSheet(package, CommonConst.SHEET_NAME_STRUCT, file);
                     ret = EditStructSheet(methodList);
 
                     if (!ret) { return false; }
@@ -430,22 +419,22 @@ namespace ExecCobolAnalysis
         /// <returns></returns>
         private static Division CheckDivisionChanged(string[] arrWord)
         {
-            if (arrWord.Length < 2 || arrWord[1].Replace(".", "") != "DIVISION")
+            if (arrWord.Length < 2 || arrWord[1].Replace(".", "") != CommonConst.WORD_DIVISION)
                 return Division.NONE;
 
             switch (arrWord[0])
             {
                 // 見出し部
-                case "IDENTIFICATION":
+                case CommonConst.WORD_IDENTIFICATION:
                     return Division.IDENTIFICATION;
                 // 環境部
-                case "ENVIRONMENT":
+                case CommonConst.WORD_ENVIRONMENT:
                     return Division.ENVIRONMENT;
                 // データ部
-                case "DATA":
+                case CommonConst.WORD_DATA:
                     return Division.DATA;
                 // 手続き部
-                case "PROCEDURE":
+                case CommonConst.WORD_PROCEDURE:
                     return Division.PROCEDURE;
                 default:
                     return Division.NONE;
@@ -463,35 +452,29 @@ namespace ExecCobolAnalysis
             string checkText = arrWord[0].Replace(".", "");
 
             // 共通
-            if (checkText == string.Empty || Left(checkText, 1) == COM_PREFIX)
+            if (checkText == string.Empty || Left(checkText, 1) == CommonConst.COM_PREFIX)
                 return false;
 
             switch (division)
             {
                 // 見出し部
                 case Division.IDENTIFICATION:
-                    if (checkText == "IDENTIFICATION" || checkText == "PROGRAM-ID"
-                            || checkText == "AUTHOR" || checkText == "DATE-WRITTEN"
-                            || checkText == "DATE-COMPILED")
+                    if (RegexIdentification.IsMatch(checkText))
                         return false;
                     break;
                 // 環境部
                 case Division.ENVIRONMENT:
-                    if (checkText == "ENVIRONMENT" || checkText == "CONFIGURATION"
-                            || checkText == "SOURCE-COMPUTER" || checkText == "OBJECT-COMPUTER"
-                            || checkText == "INPUT-OUTPUT" || checkText == "FILE-CONTROL")
+                    if (RegexEnvironment.IsMatch(checkText))
                         return false;
                     break;
                 // データ部
                 case Division.DATA:
-                    if (checkText == "DATA" || checkText == "FILE"
-                            || checkText == "WORKING-STORAGE" || checkText == "LINKAGE"
-                            || checkText == "REPORT" || checkText == "SCREEN")
+                    if (RegexData.IsMatch(checkText))
                         return false;
                     break;
                 // 手続き部
                 case Division.PROCEDURE:
-                    if (checkText == "DISPLAY")
+                    if (RegexPROCEDURE.IsMatch(checkText))
                         return false;
                     break;
                 default:
@@ -511,14 +494,21 @@ namespace ExecCobolAnalysis
         private static string GetComment(string file, int comIndex)
         {
             string comLine = File.ReadAllLines(file, EncShiftJis).Skip(comIndex).Take(1).First();
-            if (Mid(comLine, 7, 1) == COM_PREFIX)
+            if (Mid(comLine, 7, 1) == CommonConst.COM_PREFIX)
                 return FormatLine(comLine, true);
             else
                 return string.Empty;
         }
         #endregion
 
-        #region プログラム情報描画
+        #region PGM情報描画
+        /// <summary>
+        /// PGM情報シート編集
+        /// </summary>
+        /// <param name="copyList"></param>
+        /// <param name="sqlInfoList"></param>
+        /// <param name="calledModuleList"></param>
+        /// <returns></returns>
         private static bool EditPgmInfoSheet(IReadOnlyDictionary<string, string> copyList
                                     , IEnumerable<SqlInfo> sqlInfoList
                                     , IEnumerable<string> calledModuleList)
@@ -538,13 +528,13 @@ namespace ExecCobolAnalysis
                 // 各項目のタイトル部分を書き込む
                 // =================================================================
                 // コピー句のタイトルセット
-                SetStyleOfTitle(SHEET_NAME_PGMINFO, "B2:C2", Color.SpringGreen);
+                SetStyleOfTitle(CommonConst.SHEET_NAME_PGMINFO, "B2:C2", Color.SpringGreen);
                 WsPgmInfo.Cells[row, 2].Value = "COPY句";
                 // 呼出モジュールのタイトルセット
-                SetStyleOfTitle(SHEET_NAME_PGMINFO, "D2:D2", Color.Pink);
+                SetStyleOfTitle(CommonConst.SHEET_NAME_PGMINFO, "D2:D2", Color.Pink);
                 WsPgmInfo.Cells[row, 4].Value = "呼出モジュール";
                 // SQL変数宣言部のタイトルセット
-                SetStyleOfTitle(SHEET_NAME_PGMINFO, "E2:K2", Color.LightSteelBlue);
+                SetStyleOfTitle(CommonConst.SHEET_NAME_PGMINFO, "E2:K2", Color.LightSteelBlue);
                 WsPgmInfo.Cells[row, 5].Value = "使用DB";
                 WsPgmInfo.Cells[row, 7].Value = "[SELECT]";
                 WsPgmInfo.Cells[row, 8].Value = "[INSERT]";
@@ -617,7 +607,7 @@ namespace ExecCobolAnalysis
                     WsPgmInfo.Cells[row, 11].Value = dbInfo.CreateFlg ? "〇" : string.Empty; // CREATE
                 }
 
-                WsPgmInfo.Cells.Style.Font.Name = FONT_NAME;
+                WsPgmInfo.Cells.Style.Font.Name = CommonConst.FONT_NAME_MEIRYOUI;
                 WsPgmInfo.Cells[WsPgmInfo.Dimension.Address].AutoFitColumns(); // 列幅自動調整
             }
             catch (Exception ex)
@@ -629,14 +619,18 @@ namespace ExecCobolAnalysis
             return true;
         }
 
+        /// <summary>
+        /// DB定義一覧を取得
+        /// </summary>
+        /// <returns></returns>
         private static DataTable GetDbDefine()
         {
             // データテーブルを作成
             DataTable dt = new DataTable();
-            dt.Columns.Add("Table_P");
-            dt.Columns.Add("Table_L");
-            dt.Columns.Add("Column_P");
-            dt.Columns.Add("Column_L");
+            dt.Columns.Add(CommonConst.TABLE_P);
+            dt.Columns.Add(CommonConst.TABLE_L);
+            dt.Columns.Add(CommonConst.COLUMN_P);
+            dt.Columns.Add(CommonConst.COLUMN_L);
 
             // DB定義一覧ファイルの存在チェック（なくても処理は止めない）
             if (!File.Exists(DbDifineFileName))
@@ -646,6 +640,7 @@ namespace ExecCobolAnalysis
             }
 
             // DB定義一覧を取得
+            // ※"テーブル物理名"、"テーブル論理名"、"カラム物理名"、"カラム論理名"　がカンマ区切りで並んでいるCSVファイルの想定
             using (StreamReader sr = new StreamReader(DbDifineFileName, EncUtf8))
             {
                 // 読み込んだ行をデータテーブルにセット
@@ -654,12 +649,12 @@ namespace ExecCobolAnalysis
                     string[] line = sr.ReadLine().Split(',');
                     if (line.Length != 4)
                         continue;
-
+                    
                     DataRow dr = dt.NewRow();
-                    dr["Table_P"] = line[0];
-                    dr["Table_L"] = line[1];
-                    dr["Column_P"] = line[2];
-                    dr["Column_L"] = line[3];
+                    dr[CommonConst.TABLE_P] = line[0];
+                    dr[CommonConst.TABLE_L] = line[1];
+                    dr[CommonConst.COLUMN_P] = line[2];
+                    dr[CommonConst.COLUMN_L] = line[3];
                     dt.Rows.Add(dr);
                 }
             }
@@ -689,7 +684,7 @@ namespace ExecCobolAnalysis
                 int col = 2; // 列番号
 
                 // 各項目のタイトル部分を書き込む
-                SetStyleOfTitle(SHEET_NAME_METHODINFO, "B2:Z2", Color.SpringGreen);
+                SetStyleOfTitle(CommonConst.SHEET_NAME_METHODINFO, "B2:Z2", Color.SpringGreen);
                 WsMethodInfo.Cells[row, col].Value = "関数名(物理)";
                 WsMethodInfo.Cells[row, col + 1].Value = "関数名(論理)";
                 WsMethodInfo.Cells[row, col + 2].Value = "開始行数";
@@ -754,7 +749,7 @@ namespace ExecCobolAnalysis
 
                 }
 
-                WsMethodInfo.Cells.Style.Font.Name = FONT_NAME;
+                WsMethodInfo.Cells.Style.Font.Name = CommonConst.FONT_NAME_MEIRYOUI;
                 WsMethodInfo.Cells[WsMethodInfo.Dimension.Address].AutoFitColumns(); // 列幅自動調整
             }
             catch (Exception ex)
@@ -796,7 +791,7 @@ namespace ExecCobolAnalysis
                 // 呼び出される関数名を再帰的にExcelに書き込む
                 GetCalledMethodRecursively(methodList, 0, row + 1, col + 1);
 
-                WsStruct.Cells.Style.Font.Name = FONT_NAME;
+                WsStruct.Cells.Style.Font.Name = CommonConst.FONT_NAME_MEIRYOUI;
             }
             catch (Exception ex)
             {
@@ -814,6 +809,7 @@ namespace ExecCobolAnalysis
         /// <param name="index"></param>
         /// <param name="row"></param>
         /// <param name="col"></param>
+        /// <param name="cm"></param>
         private static void WriteMethod(List<Method> methodList, int index, int row, int col, CalledMethod cm)
         {
             string outText = string.Empty;
@@ -836,7 +832,7 @@ namespace ExecCobolAnalysis
                 outText = methodList[index].MethodNameP;
 
                 // ハイパーリンクの設定
-                string linkSheetName = SheetName.Replace(SHEET_NAME_STRUCT, SHEET_NAME_METHODINFO);
+                string linkSheetName = SheetName.Replace(CommonConst.SHEET_NAME_STRUCT, CommonConst.SHEET_NAME_METHODINFO);
                 WsStruct.Cells[row, col].Hyperlink
                     = new ExcelHyperLink("#'" + linkSheetName + "'!B" + (index + 3).ToString(), outText);
                 WsStruct.Cells[row, col].Style.Font.UnderLine = true;
@@ -844,14 +840,6 @@ namespace ExecCobolAnalysis
 
             WsStruct.Cells[row, col].Value = outText;
             WsStruct.Cells[row, col].Style.Font.Color.SetColor(outColor);
-
-            //ExcelShape es = WsStruct.Drawings.AddShape(outText + shapeNo.ToString(), eShapeStyle.FlowChartProcess);
-            //es.SetPosition(row, 0, col, 0);
-            //es.SetSize(100, 50);
-            //es.Text = outText;
-            //es.Fill.Style = eFillStyle.SolidFill;
-            //es.Fill.Color = Color.Red;
-            //shapeNo++;
         }
 
         /// <summary>
@@ -893,17 +881,14 @@ namespace ExecCobolAnalysis
         private static int GetMethodIndex(IReadOnlyCollection<Method> methodList, CalledMethod cm)
         {
             if (cm.ModuleFlg)
-            {
                 return -1;
-            }
 
             int i = 0;
             foreach (var method in methodList)
             {
                 if (cm.Name == method.MethodNameP)
-                {
                     return i;
-                }
+
                 i++;
             }
             return -1;
@@ -925,17 +910,17 @@ namespace ExecCobolAnalysis
         {
             switch (sheetName)
             {
-                case SHEET_NAME_PGMINFO:
+                case CommonConst.SHEET_NAME_PGMINFO:
                     WsPgmInfo.Cells[range].Style.Font.Bold = true;
                     WsPgmInfo.Cells[range].Style.Fill.PatternType = ExcelFillStyle.DarkVertical;
                     WsPgmInfo.Cells[range].Style.Fill.BackgroundColor.SetColor(titleColor);
                     break;
-                case SHEET_NAME_METHODINFO:
+                case CommonConst.SHEET_NAME_METHODINFO:
                     WsMethodInfo.Cells[range].Style.Font.Bold = true;
                     WsMethodInfo.Cells[range].Style.Fill.PatternType = ExcelFillStyle.DarkVertical;
                     WsMethodInfo.Cells[range].Style.Fill.BackgroundColor.SetColor(titleColor);
                     break;
-                case SHEET_NAME_STRUCT:
+                case CommonConst.SHEET_NAME_STRUCT:
                     WsStruct.Cells[range].Style.Font.Bold = true;
                     WsStruct.Cells[range].Style.Fill.PatternType = ExcelFillStyle.DarkVertical;
                     WsStruct.Cells[range].Style.Fill.BackgroundColor.SetColor(titleColor);
@@ -1208,8 +1193,8 @@ namespace ExecCobolAnalysis
             Name_L = string.Empty;
             foreach (DataRow dr in dt.Rows)
             {
-                if (name == dr["Table_P"].ToString())
-                    Name_L = dr["Table_L"].ToString();
+                if (name == dr[CommonConst.TABLE_P].ToString())
+                    Name_L = dr[CommonConst.TABLE_L].ToString();
             }
             SetCrudFlg(type);
         }
