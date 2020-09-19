@@ -169,13 +169,15 @@ namespace ExecCobolAnalysis
                                 if (arrWord[arrWord.Length - 1] == "SECTION")
                                 {
                                     methodIndex++;
-                                    Method m = new Method(arrWord[0], fileIndex, -1);
-                                    methodList.Add(m);
-                                    inMethodErea = true;
 
                                     // 関数名の論理名の特定（関数開始行の2行手前がコメント行だと仮定する）
                                     // ※関数開始行の3行前までを読み飛ばし、次の1行（＝コメント行）を読み込む
-                                    methodList[methodIndex].MethodNameL = GetComment(file, fileIndex - 3);
+                                    string methodNameL = GetComment(file, fileIndex - 3);
+
+                                    Method m = new Method(arrWord[0], methodNameL, fileIndex, -1);
+                                    methodList.Add(m);
+                                    inMethodErea = true;
+
                                     continue;
                                 }
 
@@ -194,14 +196,14 @@ namespace ExecCobolAnalysis
                                     if (moduleFlg)
                                         calledModuleList.Add(name);
 
-                                    methodList[methodIndex].CalledMethod.Add(new CalledMethod(name, moduleFlg));
+                                    methodList[methodIndex].CalledMethodList.Add(new CalledMethod(name, moduleFlg));
                                     continue;
                                 }
 
                                 // 関数の終了行を特定
                                 if (arrWord[0] == methodList[methodIndex].MethodNameP + "-999")
                                 {
-                                    methodList[methodIndex].CalledMethod = methodList[methodIndex].CalledMethod.Distinct().ToList();
+                                    methodList[methodIndex].CalledMethodList = methodList[methodIndex].CalledMethodList.Distinct().ToList();
                                     methodList[methodIndex].EndIndex = fileIndex;
                                     inMethodErea = false;
                                     continue;
@@ -294,7 +296,7 @@ namespace ExecCobolAnalysis
                         if (index == methodList.IndexOf(method2))
                             continue;
 
-                        foreach (var cm in method2.CalledMethod)
+                        foreach (var cm in method2.CalledMethodList)
                         {
                             if (method1.MethodNameP == cm.Name)
                             {
@@ -314,9 +316,9 @@ namespace ExecCobolAnalysis
                 {
                     // 呼出フラグがfalseかつ、呼出先がある関数が対象
                     if (method1.CalledFlg) { continue; }
-                    if (method1.CalledMethod.Count < 1) { continue; }
+                    if (method1.CalledMethodList.Count < 1) { continue; }
 
-                    foreach (var cm in method1.CalledMethod)
+                    foreach (var cm in method1.CalledMethodList)
                     {
                         calledMethodList.Add(methodList[cm.MethodListIndex]);
                     }
@@ -331,7 +333,7 @@ namespace ExecCobolAnalysis
                     foreach (var method2 in methodList)
                     {
                         if (index == methodList.IndexOf(method2)) { continue; }
-                        foreach (var cm in method2.CalledMethod)
+                        foreach (var cm in method2.CalledMethodList)
                         {
                             if (method1.MethodNameP == cm.Name && method2.CalledFlg)
                             {
@@ -569,13 +571,12 @@ namespace ExecCobolAnalysis
                 // DB定義一覧を取得
                 DataTable dt = GetDbDefine();
 
-                SqlInfo _sqlInfo = new SqlInfo();
                 DbInfo _dbInfo;
                 List<DbInfo> dbInfoList = new List<DbInfo>();
                 foreach (var sqlInfo in sqlInfoList)
                 {
                     // SQL内で使用されているDBリストを取得
-                    IEnumerable<string> dbList = _sqlInfo.GetDbList(sqlInfo.TokenList);
+                    IEnumerable<string> dbList = sqlInfo.GetDbList();
                     // DBの使用されているCRUDをセット
                     foreach (string dbName in dbList)
                     {
@@ -699,7 +700,6 @@ namespace ExecCobolAnalysis
                 }
 
                 // 関数リストを書き込む
-                SqlInfo _sqlInfo = new SqlInfo();
                 foreach (var method in methodList)
                 {
                     calledMethodCol = 7;
@@ -711,7 +711,7 @@ namespace ExecCobolAnalysis
                     {
                         if (method.MethodNameP == sqlInfo.CalledMethod)
                         {
-                            string sqlType = SqlTypeToString(sqlInfo.Type);
+                            string sqlType = sqlInfo.SqlTypeToString();
                             sqlTypeList.Add(sqlType);
                         }
                     }
@@ -729,7 +729,7 @@ namespace ExecCobolAnalysis
                     // DB操作
                     WsMethodInfo.Cells[row, col + 4].Value = sqlTypeString;
                     // 呼出関数
-                    foreach (var cm in method.CalledMethod)
+                    foreach (var cm in method.CalledMethodList)
                     {
                         Color outColor = cm.ModuleFlg ? ColorModule : ColorMethod;
                         WsMethodInfo.Cells[row, calledMethodCol].Value = cm.Name;
@@ -852,7 +852,7 @@ namespace ExecCobolAnalysis
         private static void GetCalledMethodRecursively(List<Method> methodList, int index, int row, int col)
         {
             // 関数内から呼び出している他関数・モジュールを読み込む
-            foreach (var calledMethod in methodList[index].CalledMethod)
+            foreach (var calledMethod in methodList[index].CalledMethodList)
             {
                 // 呼出関数名の、関数リスト内での位置を取得
                 int calledMethodIndex = GetMethodIndex(methodList, calledMethod);
@@ -936,29 +936,6 @@ namespace ExecCobolAnalysis
                 return string.Empty;
             else
                 return value[index];
-        }
-
-        private static string SqlTypeToString(SqlType sqlType)
-        {
-            string ret = string.Empty;
-            switch (sqlType)
-            {
-                case SqlType.Select:
-                    ret = "SELECT";
-                    break;
-                case SqlType.Insert:
-                    ret = "INSERT";
-                    break;
-                case SqlType.Update:
-                    ret = "UPDATE";
-                    break;
-                case SqlType.Delete:
-                    ret = "DELETE";
-                    break;
-                default:
-                    break;
-            }
-            return ret;
         }
 
         /// <summary>
@@ -1064,19 +1041,20 @@ namespace ExecCobolAnalysis
     /// </summary>
     public class Method
     {
-        public string MethodNameP { get; internal set; }
-        public string MethodNameL { get; internal set; }
-        public int StartIndex { get; internal set; }
+        public string MethodNameP { get; }
+        public string MethodNameL { get; }
+        public int StartIndex { get; }
         public int EndIndex { get; internal set; }
-        public List<CalledMethod> CalledMethod { get; internal set; }
+        public List<CalledMethod> CalledMethodList { get; internal set; }
         public bool CalledFlg { get; internal set; }
 
-        public Method(string methodName, int startIndex, int endIndex)
+        public Method(string methodNameP, string methodNameL, int startIndex, int endIndex)
         {
-            MethodNameP = methodName;
+            MethodNameP = methodNameP;
+            MethodNameL = methodNameL;
             StartIndex = startIndex;
             EndIndex = endIndex;
-            CalledMethod = new List<CalledMethod>();
+            CalledMethodList = new List<CalledMethod>();
             CalledFlg = false;
         }
     }
@@ -1098,6 +1076,11 @@ namespace ExecCobolAnalysis
             ModuleFlg = moduleFlg;
         }
 
+        public void SetMethodListIndex(int i)
+        {
+            MethodListIndex = i;
+        }
+
         public override int GetHashCode()
         {
             return this.Name.GetHashCode();
@@ -1116,10 +1099,10 @@ namespace ExecCobolAnalysis
     /// </summary>
     public class SqlInfo
     {
-        public string Value { get; internal set; }
-        public IEnumerable<TokenInfo> TokenList { get; internal set; }
-        public SqlType Type { get; internal set; }
-        public string CalledMethod { get; internal set; }
+        public string Value { get; }
+        public IEnumerable<TokenInfo> TokenList { get; }
+        public SqlType Type { get; }
+        public string CalledMethod { get; }
 
         public SqlInfo(string value, IEnumerable<TokenInfo> tokenList, SqlType type, string calledMethod)
         {
@@ -1129,17 +1112,13 @@ namespace ExecCobolAnalysis
             CalledMethod = calledMethod;
         }
 
-        public SqlInfo()
-        {
-        }
-
-        public List<string> GetDbList(IEnumerable<TokenInfo> tokenList)
+        public List<string> GetDbList()
         {
             List<string> dbList = new List<string>();
             bool dbAddFlg1 = false;
             bool dbAddFlg2 = false;
 
-            foreach (var token in tokenList)
+            foreach (var token in TokenList)
             {
                 if (token.Token == Tokens.TOKEN_FROM || token.Token == Tokens.TOKEN_JOIN)
                 {
@@ -1172,6 +1151,30 @@ namespace ExecCobolAnalysis
 
             return dbList;
         }
+
+        public string SqlTypeToString()
+        {
+            string ret = string.Empty;
+            switch (Type)
+            {
+                case SqlType.Select:
+                    ret = "SELECT";
+                    break;
+                case SqlType.Insert:
+                    ret = "INSERT";
+                    break;
+                case SqlType.Update:
+                    ret = "UPDATE";
+                    break;
+                case SqlType.Delete:
+                    ret = "DELETE";
+                    break;
+                default:
+                    break;
+            }
+            return ret;
+        }
+
     }
 
     /// <summary>
@@ -1179,13 +1182,13 @@ namespace ExecCobolAnalysis
     /// </summary>
     public class DbInfo : IEquatable<DbInfo>
     {
-        public string Name_P { get; internal set; }
-        public string Name_L { get; internal set; }
-        public bool SelectFlg { get; internal set; } = false;
-        public bool InsertFlg { get; internal set; } = false;
-        public bool UpdateFlg { get; internal set; } = false;
-        public bool DeleteFlg { get; internal set; } = false;
-        public bool CreateFlg { get; internal set; } = false;
+        public string Name_P { get; }
+        public string Name_L { get; }
+        public bool SelectFlg { get; private set; } = false;
+        public bool InsertFlg { get; private set; } = false;
+        public bool UpdateFlg { get; private set; } = false;
+        public bool DeleteFlg { get; private set; } = false;
+        public bool CreateFlg { get; private set; } = false;
 
         public DbInfo(string name, SqlType type, DataTable dt)
         {
