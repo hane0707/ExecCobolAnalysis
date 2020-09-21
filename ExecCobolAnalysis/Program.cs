@@ -108,6 +108,7 @@ namespace ExecCobolAnalysis
                 List<string> calledModuleList = new List<string>();
                 List<IEnumerable<TokenInfo>> SqlTokenList = new List<IEnumerable<TokenInfo>>();
                 List<SqlInfo> sqlInfoList = new List<SqlInfo>();
+                List<SqlInfo> cursorList = new List<SqlInfo>();
 
                 // =================================================================
                 // 前処理①（関数の一覧をリスト化）
@@ -122,6 +123,7 @@ namespace ExecCobolAnalysis
                     bool inSqlErea = false;
                     string sql = string.Empty;
                     SqlType sqlType = SqlType.None;
+                    string cursorName = string.Empty;
 
                     while (sr.Peek() >= 0)
                     {
@@ -146,6 +148,7 @@ namespace ExecCobolAnalysis
                         if (!CheckExcludedWords(arrWord, division))
                             continue;
 
+                        // COBOLのプログラム定義部分による処理分岐
                         switch (division)
                         {
                             case Division.NONE:
@@ -163,6 +166,23 @@ namespace ExecCobolAnalysis
                                     if (!copyList.ContainsKey(copyKey))
                                         copyList.Add(copyKey, comLine);
                                 }
+
+                                // カーソル開始行を特定　※DECLARE句が次の行に記載のある想定
+                                if (String.Join(" ", arrWord) == "EXEC SQL")
+                                {
+                                    inSqlErea = true;
+                                    sql = string.Empty;
+                                    sqlType = SqlType.None;
+                                    cursorName = string.Empty;
+                                    continue;
+                                }
+
+                                // =================================================================
+                                // カーソル内を解析
+                                // =================================================================
+                                if(inSqlErea)
+                                    inSqlErea = AddSqlList(division, arrWord, string.Empty, ref sql, ref sqlType, ref cursorList, ref cursorName);
+
                                 continue;
                             case Division.PROCEDURE:
                                 // 関数の開始行を特定
@@ -215,57 +235,27 @@ namespace ExecCobolAnalysis
                                     inSqlErea = true;
                                     sql = string.Empty;
                                     sqlType = SqlType.None;
+                                    cursorName = string.Empty;
                                     continue;
                                 }
 
                                 // =================================================================
                                 // SQL内を解析
                                 // =================================================================
-                                if (!inSqlErea)
-                                    continue;
-
-                                // SQLの処理区分を特定
-                                switch (arrWord[0])
+                                if (inSqlErea)
                                 {
-                                    case "SELECT":
-                                        sqlType = (sqlType == SqlType.None) ? SqlType.Select : sqlType;
-                                        break;
-                                    case "INSERT":
-                                        sqlType = (sqlType == SqlType.None) ? SqlType.Insert : sqlType;
-                                        break;
-                                    case "UPDATE":
-                                        sqlType = (sqlType == SqlType.None) ? SqlType.Update : sqlType;
-                                        break;
-                                    case "DELETE":
-                                        sqlType = (sqlType == SqlType.None) ? SqlType.Delete : sqlType;
-                                        break;
-                                    default:
-                                        break;
-                                }
+                                    inSqlErea = AddSqlList(division, arrWord, methodList[methodIndex].MethodNameP, ref sql, ref sqlType, ref sqlInfoList, ref cursorName);
 
-                                // SQL終了行を特定
-                                if (arrWord[0].Replace(".", "") == "END-EXEC")
-                                {
-                                    IEnumerable<TokenInfo> tokens;
-                                    if (!string.IsNullOrEmpty(sql))
+                                    // カーソルを呼び出している場合、SQL情報クラスに使用関数名をセット
+                                    if(arrWord.Length > 1 && arrWord[0] == "FETCH")
                                     {
-                                        tokens = TransactSqlHelpers.Parser.ParseSql(sql);
-                                        SqlInfo sqlInfo = new SqlInfo(sql, tokens, sqlType, methodList[methodIndex].MethodNameP);
-                                        sqlInfoList.Add(sqlInfo);
+                                        foreach (var cursor in cursorList)
+                                        {
+                                            if (cursor.CursorName == arrWord[1])
+                                                cursor.UseddMethodName = methodList[methodIndex].MethodNameP;
+                                        }
                                     }
-
-                                    inSqlErea = false;
-                                    continue;
                                 }
-
-                                // SQL文の取得
-                                StringBuilder str = new StringBuilder();
-                                str.Append(sql);
-                                foreach (string val in arrWord)
-                                {
-                                    str.Append(val + " ");
-                                }
-                                sql = str.ToString();
 
                                 continue;
                             default:
@@ -293,8 +283,7 @@ namespace ExecCobolAnalysis
                     if (index == 0) { method1.CalledFlg = true; }
                     foreach (var method2 in methodList)
                     {
-                        if (index == methodList.IndexOf(method2))
-                            continue;
+                        if (index == methodList.IndexOf(method2)) { continue; }
 
                         foreach (var cm in method2.CalledMethodList)
                         {
@@ -319,9 +308,7 @@ namespace ExecCobolAnalysis
                     if (method1.CalledMethodList.Count < 1) { continue; }
 
                     foreach (var cm in method1.CalledMethodList)
-                    {
                         calledMethodList.Add(methodList[cm.MethodListIndex]);
-                    }
                 }
 
                 // 呼出先リストにある関数が、呼出フラグfalseの関数からのみ呼び出されていれば呼出フラグfalseにする
@@ -360,13 +347,13 @@ namespace ExecCobolAnalysis
 
                     // プログラム情報シート作成・編集（シート名：PGM情報_{読込ファイル名}）
                     WsPgmInfo = AddSheet(package, CommonConst.SHEET_NAME_PGMINFO, file);
-                    ret = EditPgmInfoSheet(copyList, sqlInfoList, calledModuleList);
+                    ret = EditPgmInfoSheet(copyList, sqlInfoList, cursorList, calledModuleList);
 
                     if (!ret) { return false; }
 
                     // 関数情報シート作成・編集（シート名：関数情報_{読込ファイル名}）
                     WsMethodInfo = AddSheet(package, CommonConst.SHEET_NAME_METHODINFO, file);
-                    ret = EditMethodInfoSheet(methodList, sqlInfoList);
+                    ret = EditMethodInfoSheet(methodList, sqlInfoList, cursorList);
 
                     if (!ret) { return false; }
 
@@ -501,8 +488,97 @@ namespace ExecCobolAnalysis
             else
                 return string.Empty;
         }
+
+        private static bool AddSqlList(Division division , string[] arrWord , string usedMethodName
+                , ref string sql, ref SqlType sqlType, ref List<SqlInfo> sqlList, ref string cursorName)
+        {
+            SqlInfo _sqlInfo = new SqlInfo();
+
+            // カーソル物理名を特定
+            if(division == Division.DATA && arrWord.Length > 1 && arrWord[0] == "DECLARE")
+                cursorName = arrWord[1];
+
+            // SQLの処理区分を特定
+            sqlType = _sqlInfo.StringToSqlType(arrWord[0], sqlType);
+
+            // SQL終了行を特定
+            if (arrWord[0].Replace(".", "") == "END-EXEC")
+            {
+                IEnumerable<TokenInfo> tokens;
+                if (!string.IsNullOrEmpty(sql))
+                {
+                    tokens = TransactSqlHelpers.Parser.ParseSql(sql);
+                    SqlInfo sqlInfo = new SqlInfo(sql, tokens, sqlType, usedMethodName, cursorName);
+                    sqlList.Add(sqlInfo);
+                }
+
+                return false;
+            }
+
+            // SQL文の取得
+            StringBuilder str = new StringBuilder();
+            str.Append(sql);
+            foreach (string val in arrWord)
+            {
+                str.Append(val + " ");
+            }
+            sql = str.ToString();
+            return true;
+        }
         #endregion
 
+        // todo
+        #region SQL情報描画
+        private static bool EditSqlInfoSheet(IEnumerable<SqlInfo> sqlInfoList)
+        {
+            string errorMsg = "(" + SheetName + "シート作成時エラー)";
+            if (WsPgmInfo == null)
+            {
+                _logger.Fatal(errorMsg + "Excelシート変数に値が割り当てられませんでした。");
+                return false;
+            }
+
+            try
+            {
+                foreach (SqlInfo sqlInfo in sqlInfoList)
+                {
+                    string[] sql = sqlInfo.Value.Split(' ');
+                    StringBuilder sb = new StringBuilder();
+                    int index = 0;
+
+                    switch (sqlInfo.Type)
+                    {
+                        case SqlType.Select:
+                            foreach (TokenInfo token in sqlInfo.TokenList)
+                            {
+                                sb.Append(sql[index]);
+
+                            }
+                            break;
+                        case SqlType.Insert:
+                            break;
+                        case SqlType.Update:
+                            break;
+                        case SqlType.Delete:
+                            break;
+                        case SqlType.Create:
+                            break;
+                        default:
+                            break;
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                _logger.Fatal(errorMsg + ex.Message);
+                return false;
+            }
+
+            return true;
+        }
+        #endregion
+        
         #region PGM情報描画
         /// <summary>
         /// PGM情報シート編集
@@ -513,6 +589,7 @@ namespace ExecCobolAnalysis
         /// <returns></returns>
         private static bool EditPgmInfoSheet(IReadOnlyDictionary<string, string> copyList
                                     , IEnumerable<SqlInfo> sqlInfoList
+                                    , IEnumerable<SqlInfo> cursorList
                                     , IEnumerable<string> calledModuleList)
         {
             string errorMsg = "(" + SheetName + "シート作成時エラー)";
@@ -535,15 +612,20 @@ namespace ExecCobolAnalysis
                 // 呼出モジュールのタイトルセット
                 SetStyleOfTitle(CommonConst.SHEET_NAME_PGMINFO, "D2:D2", Color.Pink);
                 WsPgmInfo.Cells[row, 4].Value = "呼出モジュール";
+                // カーソルのタイトルセット
+                SetStyleOfTitle(CommonConst.SHEET_NAME_PGMINFO, "E2:F2", Color.Bisque);
+                WsPgmInfo.Cells[row, 5].Value = "カーソル";
+                WsPgmInfo.Cells[row, 6].Value = "[使用DB]";
+                WsPgmInfo.Cells[row, 6].Style.Font.Size = 9;
                 // SQL変数宣言部のタイトルセット
-                SetStyleOfTitle(CommonConst.SHEET_NAME_PGMINFO, "E2:K2", Color.LightSteelBlue);
-                WsPgmInfo.Cells[row, 5].Value = "使用DB";
-                WsPgmInfo.Cells[row, 7].Value = "[SELECT]";
-                WsPgmInfo.Cells[row, 8].Value = "[INSERT]";
-                WsPgmInfo.Cells[row, 9].Value = "[UPDATE]";
-                WsPgmInfo.Cells[row, 10].Value = "[DELETE]";
-                WsPgmInfo.Cells[row, 11].Value = "[CREATE]";
-                WsPgmInfo.Cells[row, 7, row, 11].Style.Font.Size = 9;
+                SetStyleOfTitle(CommonConst.SHEET_NAME_PGMINFO, "G2:M2", Color.LightSteelBlue);
+                WsPgmInfo.Cells[row, 7].Value = "DB情報";
+                WsPgmInfo.Cells[row, 9].Value = "[SELECT]";
+                WsPgmInfo.Cells[row, 10].Value = "[INSERT]";
+                WsPgmInfo.Cells[row, 11].Value = "[UPDATE]";
+                WsPgmInfo.Cells[row, 12].Value = "[DELETE]";
+                WsPgmInfo.Cells[row, 13].Value = "[CREATE]";
+                WsPgmInfo.Cells[row, 9, row, 13].Style.Font.Size = 9;
 
                 // =================================================================
                 // コピー句リストを書き込む
@@ -566,9 +648,26 @@ namespace ExecCobolAnalysis
                 }
 
                 // =================================================================
+                // カーソルリストを書き込む
+                // =================================================================
+                row = 2;
+                foreach (var cursor in cursorList)
+                {
+                    row++;
+                    WsPgmInfo.Cells[row, 5].Value = cursor.CursorName; // カーソル物理名
+
+                    // カーソル内で使用されているDBリストを取得
+                    IEnumerable<string> dbList = cursor.GetDbList();
+                    string dbTxt = string.Empty;
+                    foreach (var db in dbList)
+                        dbTxt += db + ",";
+                    WsPgmInfo.Cells[row, 6].Value = dbTxt.TrimEnd(','); // カーソル内使用DB一覧
+                }
+
+                // =================================================================
                 // 使用DBリストを書き込む
                 // =================================================================
-                // DB定義一覧を取得
+                // テーブルの論理名取得用にDB定義一覧を取得
                 DataTable dt = GetDbDefine();
 
                 DbInfo _dbInfo;
@@ -599,13 +698,13 @@ namespace ExecCobolAnalysis
                 foreach (var dbInfo in distinctList)
                 {
                     row++;
-                    WsPgmInfo.Cells[row, 5].Value = dbInfo.Name_P; // DB物理名
-                    WsPgmInfo.Cells[row, 6].Value = dbInfo.Name_L; // DB論理名
-                    WsPgmInfo.Cells[row, 7].Value = dbInfo.SelectFlg ? "〇" : string.Empty; // SELECT
-                    WsPgmInfo.Cells[row, 8].Value = dbInfo.InsertFlg ? "〇" : string.Empty; // INSERT
-                    WsPgmInfo.Cells[row, 9].Value = dbInfo.UpdateFlg ? "〇" : string.Empty; // UPDATE
-                    WsPgmInfo.Cells[row, 10].Value = dbInfo.DeleteFlg ? "〇" : string.Empty; // DELETE
-                    WsPgmInfo.Cells[row, 11].Value = dbInfo.CreateFlg ? "〇" : string.Empty; // CREATE
+                    WsPgmInfo.Cells[row, 7].Value = dbInfo.Name_P; // DB物理名
+                    WsPgmInfo.Cells[row, 8].Value = dbInfo.Name_L; // DB論理名
+                    WsPgmInfo.Cells[row, 9].Value = dbInfo.SelectFlg ? "〇" : string.Empty; // SELECT
+                    WsPgmInfo.Cells[row, 10].Value = dbInfo.InsertFlg ? "〇" : string.Empty; // INSERT
+                    WsPgmInfo.Cells[row, 11].Value = dbInfo.UpdateFlg ? "〇" : string.Empty; // UPDATE
+                    WsPgmInfo.Cells[row, 12].Value = dbInfo.DeleteFlg ? "〇" : string.Empty; // DELETE
+                    WsPgmInfo.Cells[row, 13].Value = dbInfo.CreateFlg ? "〇" : string.Empty; // CREATE
                 }
 
                 WsPgmInfo.Cells.Style.Font.Name = CommonConst.FONT_NAME_MEIRYOUI;
@@ -670,7 +769,7 @@ namespace ExecCobolAnalysis
         /// </summary>
         /// <param name="methodList"></param>
         /// <returns></returns>
-        private static bool EditMethodInfoSheet(IEnumerable<Method> methodList, IReadOnlyCollection<SqlInfo> sqlInfoList)
+        private static bool EditMethodInfoSheet(IEnumerable<Method> methodList, IReadOnlyCollection<SqlInfo> sqlInfoList, IReadOnlyCollection<SqlInfo> cursorList)
         {
             string errorMsg = "(" + SheetName + "シート作成時エラー)";
             if (WsMethodInfo == null)
@@ -709,14 +808,21 @@ namespace ExecCobolAnalysis
                     List<string> sqlTypeList = new List<string>();
                     foreach (var sqlInfo in sqlInfoList)
                     {
-                        if (method.MethodNameP == sqlInfo.CalledMethod)
+                        if (method.MethodNameP == sqlInfo.UseddMethodName)
                         {
                             string sqlType = sqlInfo.SqlTypeToString();
                             sqlTypeList.Add(sqlType);
                         }
                     }
                     IEnumerable<string> distinctList = sqlTypeList.Distinct();
-                    var sqlTypeString = String.Join(",", distinctList);
+                    string sqlTypeString = String.Join(",", distinctList);
+
+                    // カーソルを呼んでいるかチェック
+                    foreach (var cursor in cursorList)
+                    {
+                        if(method.MethodNameP == cursor.UseddMethodName)
+                            sqlTypeString += ",[" + cursor.CursorName + "]";
+                    }
 
                     // 関数物理名
                     WsMethodInfo.Cells[row, col].Value = method.MethodNameP;
@@ -727,7 +833,7 @@ namespace ExecCobolAnalysis
                     // 終了行数
                     WsMethodInfo.Cells[row, col + 3].Value = method.EndIndex;
                     // DB操作
-                    WsMethodInfo.Cells[row, col + 4].Value = sqlTypeString;
+                    WsMethodInfo.Cells[row, col + 4].Value = sqlTypeString.Trim(',');
                     // 呼出関数
                     foreach (var cm in method.CalledMethodList)
                     {
@@ -1102,14 +1208,20 @@ namespace ExecCobolAnalysis
         public string Value { get; }
         public IEnumerable<TokenInfo> TokenList { get; }
         public SqlType Type { get; }
-        public string CalledMethod { get; }
+        public string UseddMethodName { get; internal set; }
+        public string CursorName { get; }
 
-        public SqlInfo(string value, IEnumerable<TokenInfo> tokenList, SqlType type, string calledMethod)
+        public SqlInfo(string value, IEnumerable<TokenInfo> tokenList, SqlType type, string useddMethodName, string cursorName)
         {
             Value = value;
             TokenList = tokenList;
             Type = type;
-            CalledMethod = calledMethod;
+            UseddMethodName = useddMethodName;
+            CursorName = cursorName;
+        }
+
+        public SqlInfo()
+        {
         }
 
         public List<string> GetDbList()
@@ -1127,6 +1239,7 @@ namespace ExecCobolAnalysis
                 }
                 if (dbAddFlg1 && token.Token == Tokens.TOKEN_ID)
                 {
+                    // テーブル名記載箇所(SELECT, DELETE)
                     dbList.Add(token.Sql);
                     continue;
                 }
@@ -1143,11 +1256,13 @@ namespace ExecCobolAnalysis
                 }
                 if(dbAddFlg2 && token.Token == Tokens.TOKEN_ID)
                 {
+                    // テーブル名記載箇所(INSERT, UPDATE, CREATE)
                     dbList.Add(token.Sql);
                     dbAddFlg2 = false;
                     continue;
                 }
             }
+            dbList = dbList.Distinct().OrderBy(x => x).ToList();
 
             return dbList;
         }
@@ -1173,6 +1288,29 @@ namespace ExecCobolAnalysis
                     break;
             }
             return ret;
+        }
+
+        public SqlType StringToSqlType(string value, SqlType sqlType)
+        {
+            switch (value)
+            {
+                case "SELECT":
+                    sqlType = (sqlType == SqlType.None) ? SqlType.Select : sqlType;
+                    break;
+                case "INSERT":
+                    sqlType = (sqlType == SqlType.None) ? SqlType.Insert : sqlType;
+                    break;
+                case "UPDATE":
+                    sqlType = (sqlType == SqlType.None) ? SqlType.Update : sqlType;
+                    break;
+                case "DELETE":
+                    sqlType = (sqlType == SqlType.None) ? SqlType.Delete : sqlType;
+                    break;
+                default:
+                    break;
+            }
+
+            return sqlType;
         }
 
     }
