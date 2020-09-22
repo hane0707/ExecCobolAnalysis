@@ -18,10 +18,8 @@ namespace ExecCobolAnalysis
     class Program
     {
         #region 変数
-        static string ResultFileName =
-            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + ConfigurationManager.AppSettings["ResultFilePath"];
-        static string DbDifineFileName =
-            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + ConfigurationManager.AppSettings["DbDifineFilePath"];
+        static string ResultFileName = ConfigurationManager.AppSettings["ResultFilePath"];
+        static string DbDifineFileName = ConfigurationManager.AppSettings["DbDifineFilePath"];
         static Encoding EncShiftJis = Encoding.GetEncoding("Shift_JIS");
         static Encoding EncUtf8 = Encoding.UTF8;
         static int InitRow = 2;
