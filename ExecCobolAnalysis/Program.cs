@@ -118,6 +118,14 @@ namespace ExecCobolAnalysis
                     Division division = Division.NONE;
                     int methodIndex = -1;
                     bool inMethodErea = false;
+                    int depthCount = -1;
+                    bool inIfConditionDefineErea = false;
+                    bool whenConditionAddFlg = false;
+                    string ifConditionTxt = string.Empty;
+                    string evaluateConditionTxt = string.Empty;
+                    string whenTxt = string.Empty;
+                    List<string> conditions = new List<string>();
+                    List<int> conditionCountList = new List<int>();
                     bool inSqlErea = false;
                     string sql = string.Empty;
                     SqlType sqlType = SqlType.None;
@@ -135,8 +143,11 @@ namespace ExecCobolAnalysis
                         // テキストをスペースで区切った配列を作成
                         string[] arrWord = fmtLine.Split(' ');
 
+                        // 予約語の置換
+                        arrWord = ReplaceReservedWord(arrWord);
+
                         // プログラム部変更の判定　※すでに手続き部にいる場合は必用なし
-                        if(division != Division.PROCEDURE)
+                        if (division != Division.PROCEDURE)
                         {
                             Division ret = CheckDivisionChanged(arrWord);
                             division = (ret != Division.NONE) ? ret : division;
@@ -195,6 +206,7 @@ namespace ExecCobolAnalysis
                                     Method m = new Method(arrWord[0], methodNameL, fileIndex, -1);
                                     methodList.Add(m);
                                     inMethodErea = true;
+                                    conditions.Clear();
 
                                     continue;
                                 }
@@ -214,7 +226,7 @@ namespace ExecCobolAnalysis
                                     if (moduleFlg)
                                         calledModuleList.Add(name);
 
-                                    methodList[methodIndex].CalledMethodList.Add(new CalledMethod(name, moduleFlg));
+                                    methodList[methodIndex].CalledMethodList.Add(new CalledMethod(name, moduleFlg, conditions));
                                     continue;
                                 }
 
@@ -253,6 +265,105 @@ namespace ExecCobolAnalysis
                                                 cursor.UseddMethodName = methodList[methodIndex].MethodNameP;
                                         }
                                     }
+                                    continue;
+                                }
+
+                                // =================================================================
+                                // IF文による条件分岐を解析
+                                // =================================================================
+                                // IF文による条件分岐を検出
+                                if (arrWord[0] == "IF")
+                                {
+                                    inIfConditionDefineErea = true;
+                                    ifConditionTxt = string.Empty;
+                                }
+
+                                // IF文の分岐条件が2行以上にわたっていた場合
+                                if (inIfConditionDefineErea && !arrWord.Contains("THEN"))
+                                {
+                                    ifConditionTxt += " " + String.Join(" ", arrWord);
+                                }
+
+                                // ※"THEN"は分岐条件記載部分の下に改行されている前提
+                                // ※疑似的な"ELSE IF"文は動作対象外
+                                if (arrWord.Contains("THEN"))
+                                {
+                                    inIfConditionDefineErea = false;
+                                    ifConditionTxt += " " + String.Join(" ", arrWord);
+                                    conditions.Add(ifConditionTxt.Replace(" THEN", "").Replace("IF", "").Trim());
+                                    continue;
+                                }
+                                else if (arrWord.Contains("ELSE"))
+                                {
+                                    // スコープがELSEに移ったので、条件リストを上書き
+                                    conditions[conditions.Count - 1] = conditions.Last() + " 以外";
+                                    continue;
+                                }
+
+                                // IF文の分岐条件定義エリア内の場合、これ以降は処理不要のため次の行を読み込む
+                                if (inIfConditionDefineErea)
+                                    continue;
+
+                                if (arrWord.Contains("END-IF"))
+                                {
+                                    // スコープを外れた分岐条件を条件リストから除外
+                                    conditions.RemoveAt(conditions.Count - 1);
+                                    continue;
+                                }
+
+                                // =================================================================
+                                // EVALUATE文による条件分岐を解析
+                                // =================================================================
+                                // EVALUATE文による条件分岐を検出
+                                if (arrWord[0] == "EVALUATE")
+                                {
+                                    evaluateConditionTxt = String.Join(" ", arrWord).Replace("EVALUATE ", "");
+                                    whenConditionAddFlg = false;
+                                    continue;
+                                }
+
+                                // EVALUATE文の分岐条件を抽出
+                                // ※1つのWHEN句が2行以上の場合は動作対象外
+                                if (arrWord.Contains("WHEN"))
+                                {
+                                    // WHEN句の内容を取得
+                                    whenTxt += arrWord.Contains("OTHER")
+                                        ? string.Empty
+                                        : "," + String.Join(" ", arrWord).Replace("WHEN", "");
+                                    whenTxt = whenTxt.Trim(',');
+
+                                    // WHEN句が続いていないか確認するため、1行前を取得
+                                    string preLine = File.ReadAllLines(file, EncShiftJis).Skip(fileIndex - 2).Take(1).First();
+                                    string preWhenConditionTxt = string.Empty;
+                                    preLine = FormatLine(preLine, false);
+                                    // WHEN句が続いていた場合、分岐条件を取得
+                                    if (Left(preLine, 4) == "WHEN")
+                                        preWhenConditionTxt = preLine;
+                                    // スコープを外れた分岐条件を条件リストから除外
+                                    if (whenConditionAddFlg)
+                                        conditions.RemoveAt(conditions.Count - 1);
+
+                                    string whenConditionTxt =
+                                        String.IsNullOrEmpty(preWhenConditionTxt)
+                                        ? String.Join(" ", arrWord)
+                                        : preWhenConditionTxt + " または " + String.Join(" ", arrWord);
+
+                                    string otherConditionTxt = whenTxt + " 以外";
+                                    if (whenConditionTxt.Contains("OTHER"))
+                                        conditions.Add(evaluateConditionTxt + " =" + otherConditionTxt);
+                                    else
+                                        conditions.Add(evaluateConditionTxt + " " + whenConditionTxt.Replace("WHEN ", "= "));
+
+                                    whenConditionAddFlg = true;
+                                    continue;
+                                }
+
+                                if (arrWord[0].Contains("END-EVALUATE"))
+                                {
+                                    // スコープを外れた分岐条件を条件リストから除外
+                                    conditions.RemoveAt(conditions.Count - 1);
+                                    whenTxt = string.Empty;
+                                    continue;
                                 }
 
                                 continue;
@@ -426,6 +537,23 @@ namespace ExecCobolAnalysis
                 default:
                     return Division.NONE;
             }
+        }
+
+        private static string[] ReplaceReservedWord(string[] arrWord)
+        {
+            int i = -1;
+            foreach (string word in arrWord)
+            {
+                i++;
+                string replaceWord = word;
+                if (word == "ZERO")
+                    replaceWord = "0";
+                if (word == "SPACE")
+                    replaceWord = "''";
+
+                arrWord[i] = replaceWord;
+            }
+            return arrWord;
         }
 
         /// <summary>
@@ -819,7 +947,7 @@ namespace ExecCobolAnalysis
                     foreach (var cursor in cursorList)
                     {
                         if(method.MethodNameP == cursor.UseddMethodName)
-                            sqlTypeString += ",[" + cursor.CursorName + "]";
+                            sqlTypeString += ",SELECT [" + cursor.CursorName + "]";
                     }
 
                     // 関数物理名
@@ -889,11 +1017,11 @@ namespace ExecCobolAnalysis
                 // セルを方眼紙にする
                 WsStruct.DefaultColWidth = 3;
 
-                // 起点となる関数名をExcellに書き込む
-                WriteMethod(methodList, 0, row, col, new CalledMethod(string.Empty, false));
+                // 起点となる関数名をExcelに書き込む
+                WriteMethod(methodList, 0, ref row, ref col, new CalledMethod(string.Empty, false, new List<string>()));
 
                 // 呼び出される関数名を再帰的にExcelに書き込む
-                GetCalledMethodRecursively(methodList, 0, row + 1, col + 1);
+                GetCalledMethodRecursively(methodList, 0, row + 1, col + 2);
 
                 WsStruct.Cells.Style.Font.Name = CommonConst.FONT_NAME_MEIRYOUI;
             }
@@ -914,10 +1042,11 @@ namespace ExecCobolAnalysis
         /// <param name="row"></param>
         /// <param name="col"></param>
         /// <param name="cm"></param>
-        private static void WriteMethod(List<Method> methodList, int index, int row, int col, CalledMethod cm)
+        private static void WriteMethod(List<Method> methodList, int index, ref int row, ref int col, CalledMethod cm)
         {
             string outText = string.Empty;
             Color outColor = ColorMethod;
+            bool flg = false;
             WsStruct.Cells[row, col].Style.Numberformat.Format = "@";
             if (cm.ModuleFlg)
             {
@@ -933,10 +1062,21 @@ namespace ExecCobolAnalysis
             else
             {
                 // 関数呼出の場合
-                outText = methodList[index].MethodNameP;
+
+                if (!String.IsNullOrEmpty(cm.Conditions))
+                {
+                    // 条件分岐がある場合
+                    WsStruct.Cells[row, col].Value = cm.Conditions;
+                    WsStruct.Cells[row, col].Style.Font.Size = 9;
+                    WsStruct.Cells[row + 1, col].Value = "└";
+                    row++;
+                    col++;
+                    flg = true;
+                }
 
                 // ハイパーリンクの設定
                 string linkSheetName = SheetName.Replace(CommonConst.SHEET_NAME_STRUCT, CommonConst.SHEET_NAME_METHODINFO);
+                outText = methodList[index].MethodNameP;
                 WsStruct.Cells[row, col].Hyperlink
                     = new ExcelHyperLink("#'" + linkSheetName + "'!B" + (index + 3).ToString(), outText);
                 WsStruct.Cells[row, col].Style.Font.UnderLine = true;
@@ -944,6 +1084,8 @@ namespace ExecCobolAnalysis
 
             WsStruct.Cells[row, col].Value = outText;
             WsStruct.Cells[row, col].Style.Font.Color.SetColor(outColor);
+            if (flg)
+                col--;
         }
 
         /// <summary>
@@ -962,7 +1104,7 @@ namespace ExecCobolAnalysis
                 int calledMethodIndex = GetMethodIndex(methodList, calledMethod);
 
                 // Excelに書き込む
-                WriteMethod(methodList, calledMethodIndex, row, col, calledMethod);
+                WriteMethod(methodList, calledMethodIndex, ref row, ref col, calledMethod);
 
                 row++;
                 InitRow = row;
@@ -970,7 +1112,7 @@ namespace ExecCobolAnalysis
                 if (calledMethodIndex > -1)
                 {
                     // 呼出先の関数内から呼び出している関数がないか、再帰的に探索する
-                    GetCalledMethodRecursively(methodList, calledMethodIndex, row, col + 1);
+                    GetCalledMethodRecursively(methodList, calledMethodIndex, row, col + 2);
                 }
                 row = InitRow;
             }
@@ -1173,16 +1315,21 @@ namespace ExecCobolAnalysis
         public string Name { get; }
         public bool ModuleFlg { get; }
         public int MethodListIndex { get; internal set; }
+        public string Conditions { get; internal set; }
 
-        public CalledMethod(string name, bool moduleFlg)
+        public CalledMethod(string name, bool moduleFlg, List<string> conditions)
         {
             Name = name;
             ModuleFlg = moduleFlg;
-        }
+            StringBuilder sb = new StringBuilder();
+            foreach (string condition in conditions)
+            {
+                if(sb.Length > 0)
+                    sb.Append(" かつ ");
 
-        public void SetMethodListIndex(int i)
-        {
-            MethodListIndex = i;
+                sb.Append("[" + condition + "]");
+            }
+            Conditions = sb.ToString();
         }
 
         public override int GetHashCode()
