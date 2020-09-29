@@ -118,8 +118,8 @@ namespace ExecCobolAnalysis
                     Division division = Division.NONE;
                     int methodIndex = -1;
                     bool inMethodErea = false;
-                    int depthCount = -1;
                     bool inIfConditionDefineErea = false;
+                    bool thenAddFlg = false;
                     bool whenConditionAddFlg = false;
                     string ifConditionTxt = string.Empty;
                     string evaluateConditionTxt = string.Empty;
@@ -218,7 +218,8 @@ namespace ExecCobolAnalysis
                                     continue;
 
                                 // 呼出関数・モジュールを特定
-                                if ((arrWord[0] == "PERFORM" && arrWord[1] != "VARYING") || arrWord[0] == "CALL")
+                                if ((arrWord.Count() >= 2 && arrWord[0] == "PERFORM" && arrWord[1] != "VARYING")
+                                        || arrWord[0] == "CALL")
                                 {
                                     bool moduleFlg = (arrWord[0] == "CALL") ? true : false;
                                     string name = arrWord[1].Replace("'", "");
@@ -275,11 +276,13 @@ namespace ExecCobolAnalysis
                                 if (arrWord[0] == "IF")
                                 {
                                     inIfConditionDefineErea = true;
+                                    thenAddFlg = false;
                                     ifConditionTxt = string.Empty;
                                 }
 
                                 // IF文の分岐条件が2行以上にわたっていた場合
-                                if (inIfConditionDefineErea && !arrWord.Contains("THEN"))
+                                if (inIfConditionDefineErea && !arrWord.Contains("THEN")
+                                        && !arrWord.Contains("ELSE") && !arrWord.Contains("CONTINUE"))
                                 {
                                     ifConditionTxt += " " + String.Join(" ", arrWord);
                                 }
@@ -291,12 +294,22 @@ namespace ExecCobolAnalysis
                                     inIfConditionDefineErea = false;
                                     ifConditionTxt += " " + String.Join(" ", arrWord);
                                     conditions.Add(ifConditionTxt.Replace(" THEN", "").Replace("IF", "").Trim());
+                                    thenAddFlg = true;
                                     continue;
                                 }
                                 else if (arrWord.Contains("ELSE"))
                                 {
                                     // スコープがELSEに移ったので、条件リストを上書き
                                     conditions[conditions.Count - 1] = conditions.Last() + " 以外";
+                                    continue;
+                                }
+                                else if(inIfConditionDefineErea && !thenAddFlg && arrWord.Contains("CONTINUE"))
+                                {
+                                    // まだスコープ内で分岐条件が条件リストに追加されていないのに"CONTINUE"句が来た場合、
+                                    // "THEN"を省略しているのでここで条件リストに追加する
+                                    inIfConditionDefineErea = false;
+                                    conditions.Add(ifConditionTxt.Replace("IF", "").Trim());
+                                    thenAddFlg = true;
                                     continue;
                                 }
 
@@ -495,10 +508,10 @@ namespace ExecCobolAnalysis
         {
             int start = exceptComFlg ? 8 : 7;
             // 一連番号領域、プログラム識別領域を取り除く（"000001  hoge   fuga " ⇒ "hoge   fuga "）
-            string frmLine = Mid(line.Trim(), start, 66);
+            string frmLine = Mid(line, start, 73 - start);
             // テキスト前後のスペースを詰め、テキスト内にある複数のスペースを取り除く（"hoge   fuga" ⇒ "hoge fuga"）
             frmLine = Regex.Replace(frmLine.Trim(), @"\s{2,}", " ");
-            // コメント行の場合、「A.」「D.」以降を取り除く
+            // コメント行の見出し領域より手前に修正履歴などがある場合、「A.」「D.」以降を取り除く
             if (exceptComFlg)
             {
                 int index = -1;
