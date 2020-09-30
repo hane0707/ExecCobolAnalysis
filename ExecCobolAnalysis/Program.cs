@@ -99,6 +99,8 @@ namespace ExecCobolAnalysis
 
         private static bool Exec(string file)
         {
+            string logSectionName = string.Empty;
+            string logLine = string.Empty;
             try
             {
                 List<Method> methodList = new List<Method>();
@@ -136,15 +138,14 @@ namespace ExecCobolAnalysis
                         fileIndex++;
 
                         // 読み込んだ行を整形する
-                        string fmtLine = FormatLine(sr.ReadLine(), false);
+                        string line = sr.ReadLine();
+                        logLine = line;
+                        string fmtLine = FormatLine(line, false);
                         if (!inSqlErea)
                             fmtLine = fmtLine.Replace(".", "");
 
                         // テキストをスペースで区切った配列を作成
                         string[] arrWord = fmtLine.Split(' ');
-
-                        // 予約語の置換
-                        arrWord = ReplaceReservedWord(arrWord);
 
                         // プログラム部変更の判定　※すでに手続き部にいる場合は必用なし
                         if (division != Division.PROCEDURE)
@@ -202,6 +203,7 @@ namespace ExecCobolAnalysis
                                     // 関数名の論理名の特定（関数開始行の2行手前がコメント行だと仮定する）
                                     // ※関数開始行の3行前までを読み飛ばし、次の1行（＝コメント行）を読み込む
                                     string methodNameL = GetComment(file, fileIndex - 3);
+                                    logSectionName = methodNameL;
 
                                     Method m = new Method(arrWord[0], methodNameL, fileIndex, -1);
                                     methodList.Add(m);
@@ -232,7 +234,7 @@ namespace ExecCobolAnalysis
                                 }
 
                                 // 関数の終了行を特定
-                                if (arrWord[0] == methodList[methodIndex].MethodNameP + "-999")
+                                if (arrWord[0] == "EXIT")
                                 {
                                     methodList[methodIndex].CalledMethodList = methodList[methodIndex].CalledMethodList.Distinct().ToList();
                                     methodList[methodIndex].EndIndex = fileIndex;
@@ -275,6 +277,12 @@ namespace ExecCobolAnalysis
                                 // IF文による条件分岐を検出
                                 if (arrWord[0] == "IF")
                                 {
+                                    if(inIfConditionDefineErea && !thenAddFlg)
+                                    {
+                                        // まだスコープ内で分岐条件が条件リストに追加されていないのに次の"IF"句が来た場合、
+                                        // "THEN"を省略しているのでここで条件リストに追加する
+                                        conditions.Add(ifConditionTxt.Replace("IF", "").Trim());
+                                    }
                                     inIfConditionDefineErea = true;
                                     thenAddFlg = false;
                                     ifConditionTxt = string.Empty;
@@ -297,19 +305,28 @@ namespace ExecCobolAnalysis
                                     thenAddFlg = true;
                                     continue;
                                 }
-                                else if (arrWord.Contains("ELSE"))
-                                {
-                                    // スコープがELSEに移ったので、条件リストを上書き
-                                    conditions[conditions.Count - 1] = conditions.Last() + " 以外";
-                                    continue;
-                                }
-                                else if(inIfConditionDefineErea && !thenAddFlg && arrWord.Contains("CONTINUE"))
+                                else if (inIfConditionDefineErea && !thenAddFlg && arrWord.Contains("CONTINUE"))
                                 {
                                     // まだスコープ内で分岐条件が条件リストに追加されていないのに"CONTINUE"句が来た場合、
                                     // "THEN"を省略しているのでここで条件リストに追加する
                                     inIfConditionDefineErea = false;
                                     conditions.Add(ifConditionTxt.Replace("IF", "").Trim());
                                     thenAddFlg = true;
+                                    continue;
+                                }
+                                else if (inIfConditionDefineErea && !thenAddFlg && arrWord.Contains("ELSE"))
+                                {
+                                    // まだスコープ内で分岐条件が条件リストに追加されていないのに"ELSE"句が来た場合、
+                                    // "THEN"を省略しているのでここで条件リストに追加する
+                                    inIfConditionDefineErea = false;
+                                    conditions.Add(ifConditionTxt.Replace("IF", "").Trim() + " 以外");
+                                    thenAddFlg = true;
+                                    continue;
+                                }
+                                else if (arrWord.Contains("ELSE"))
+                                {
+                                    // スコープがELSEに移ったので、条件リストを上書き
+                                    conditions[conditions.Count - 1] = conditions.Last() + " 以外";
                                     continue;
                                 }
 
@@ -330,7 +347,7 @@ namespace ExecCobolAnalysis
                                 // EVALUATE文による条件分岐を検出
                                 if (arrWord[0] == "EVALUATE")
                                 {
-                                    evaluateConditionTxt = String.Join(" ", arrWord).Replace("EVALUATE ", "");
+                                    evaluateConditionTxt = "[" + String.Join(" ", arrWord).Replace("EVALUATE ", "") + "]";
                                     whenConditionAddFlg = false;
                                     continue;
                                 }
@@ -343,7 +360,7 @@ namespace ExecCobolAnalysis
                                     whenTxt += arrWord.Contains("OTHER")
                                         ? string.Empty
                                         : "," + String.Join(" ", arrWord).Replace("WHEN", "");
-                                    whenTxt = whenTxt.Trim(',');
+                                    whenTxt = whenTxt.Trim(',').Trim();
 
                                     // WHEN句が続いていないか確認するため、1行前を取得
                                     string preLine = File.ReadAllLines(file, EncShiftJis).Skip(fileIndex - 2).Take(1).First();
@@ -358,14 +375,14 @@ namespace ExecCobolAnalysis
 
                                     string whenConditionTxt =
                                         String.IsNullOrEmpty(preWhenConditionTxt)
-                                        ? String.Join(" ", arrWord)
-                                        : preWhenConditionTxt + " または " + String.Join(" ", arrWord);
+                                        ? "[" + String.Join(" ", arrWord) + "]"
+                                        : "[" + preWhenConditionTxt + "]" + " または " + "[" + String.Join(" ", arrWord) + "]";
 
-                                    string otherConditionTxt = whenTxt + " 以外";
+                                    string otherConditionTxt = "[" + whenTxt + "]" + " 以外";
                                     if (whenConditionTxt.Contains("OTHER"))
-                                        conditions.Add(evaluateConditionTxt + " =" + otherConditionTxt);
+                                        conditions.Add(evaluateConditionTxt + " = " + otherConditionTxt);
                                     else
-                                        conditions.Add(evaluateConditionTxt + " " + whenConditionTxt.Replace("WHEN ", "= "));
+                                        conditions.Add(evaluateConditionTxt + " = " + whenConditionTxt.Replace("WHEN ", ""));
 
                                     whenConditionAddFlg = true;
                                     continue;
@@ -492,7 +509,9 @@ namespace ExecCobolAnalysis
             }
             catch (Exception ex)
             {
-                _logger.Fatal(ex.Message);
+                _logger.Fatal(ex.Message + Environment.NewLine
+                    + "処理セクション：[" + logSectionName + "]" + Environment.NewLine
+                    + "処理行：" + logLine);
                 return false;
             }
         }
@@ -519,6 +538,9 @@ namespace ExecCobolAnalysis
                 index = (index < 0) ? frmLine.IndexOf("D.") : index;
                 frmLine = (index < 0) ? frmLine : Left(frmLine, index);
             }
+
+            // 予約語の置換
+            frmLine = ReplaceReservedWord(frmLine);
 
             return frmLine;
         }
@@ -552,8 +574,9 @@ namespace ExecCobolAnalysis
             }
         }
 
-        private static string[] ReplaceReservedWord(string[] arrWord)
+        private static string ReplaceReservedWord(string line)
         {
+            string[] arrWord = line.Split(' ');
             int i = -1;
             foreach (string word in arrWord)
             {
@@ -563,10 +586,14 @@ namespace ExecCobolAnalysis
                     replaceWord = "0";
                 if (word == "SPACE")
                     replaceWord = "''";
+                if (word == "ALSO")
+                    replaceWord = "と";
 
                 arrWord[i] = replaceWord;
             }
-            return arrWord;
+
+            string retLine = String.Join(" ", arrWord);
+            return retLine;
         }
 
         /// <summary>
@@ -1340,7 +1367,7 @@ namespace ExecCobolAnalysis
                 if(sb.Length > 0)
                     sb.Append(" かつ ");
 
-                sb.Append("[" + condition + "]");
+                sb.Append("【" + condition + "】");
             }
             Conditions = sb.ToString();
         }
