@@ -234,7 +234,7 @@ namespace ExecCobolAnalysis
                                 }
 
                                 // 関数の終了行を特定
-                                if (arrWord[0] == "EXIT")
+                                if (arrWord[0] == "EXIT" || arrWord[0] == "GOBACK")
                                 {
                                     methodList[methodIndex].CalledMethodList = methodList[methodIndex].CalledMethodList.Distinct().ToList();
                                     methodList[methodIndex].EndIndex = fileIndex;
@@ -330,16 +330,25 @@ namespace ExecCobolAnalysis
                                     continue;
                                 }
 
-                                // IF文の分岐条件定義エリア内の場合、これ以降は処理不要のため次の行を読み込む
-                                if (inIfConditionDefineErea)
-                                    continue;
-
                                 if (arrWord.Contains("END-IF"))
                                 {
+                                    if(inIfConditionDefineErea && !thenAddFlg)
+                                    {
+                                        // まだスコープ内で分岐条件が条件リストに追加されていないのに"END=IF"句が来た場合、
+                                        // "THEN"を省略しているのでここでリセットする
+                                        ifConditionTxt = string.Empty;
+                                        inIfConditionDefineErea = false;
+                                        thenAddFlg = true;
+                                        continue;
+                                    }
                                     // スコープを外れた分岐条件を条件リストから除外
                                     conditions.RemoveAt(conditions.Count - 1);
                                     continue;
                                 }
+
+                                // IF文の分岐条件定義エリア内の場合、これ以降は処理不要のため次の行を読み込む
+                                if (inIfConditionDefineErea)
+                                    continue;
 
                                 // =================================================================
                                 // EVALUATE文による条件分岐を解析
@@ -447,7 +456,12 @@ namespace ExecCobolAnalysis
                     if (method1.CalledMethodList.Count < 1) { continue; }
 
                     foreach (var cm in method1.CalledMethodList)
+                    {
+                        if (cm.ModuleFlg)
+                            continue;
+
                         calledMethodList.Add(methodList[cm.MethodListIndex]);
+                    }
                 }
 
                 // 呼出先リストにある関数が、呼出フラグfalseの関数からのみ呼び出されていれば呼出フラグfalseにする
@@ -629,7 +643,7 @@ namespace ExecCobolAnalysis
                     break;
                 // 手続き部
                 case Division.PROCEDURE:
-                    if (RegexPROCEDURE.IsMatch(checkText))
+                    if (checkText == "DISPLAY")
                         return false;
                     break;
                 default:
@@ -816,6 +830,12 @@ namespace ExecCobolAnalysis
                 // =================================================================
                 // カーソルリストを書き込む
                 // =================================================================
+                // テーブルの論理名取得用にDB定義一覧を取得
+                DataTable dt = GetDbDefine();
+
+                DbInfo _dbInfo;
+                List<DbInfo> dbInfoList = new List<DbInfo>();
+
                 row = 2;
                 foreach (var cursor in cursorList)
                 {
@@ -825,19 +845,23 @@ namespace ExecCobolAnalysis
                     // カーソル内で使用されているDBリストを取得
                     IEnumerable<string> dbList = cursor.GetDbList();
                     string dbTxt = string.Empty;
-                    foreach (var db in dbList)
-                        dbTxt += db + ",";
+                    foreach (var dbName in dbList)
+                    {
+                        dbTxt += dbName + ",";
+                        int i = dbInfoList.FindIndex(x => x.Name_P == dbName);
+                        if (i < 0)
+                        {
+                            // 使用DBリストにためておく
+                            _dbInfo = new DbInfo(dbName, SqlType.Select, dt);
+                            dbInfoList.Add(_dbInfo);
+                        }
+                    }
                     WsPgmInfo.Cells[row, 6].Value = dbTxt.TrimEnd(','); // カーソル内使用DB一覧
                 }
 
                 // =================================================================
                 // 使用DBリストを書き込む
                 // =================================================================
-                // テーブルの論理名取得用にDB定義一覧を取得
-                DataTable dt = GetDbDefine();
-
-                DbInfo _dbInfo;
-                List<DbInfo> dbInfoList = new List<DbInfo>();
                 foreach (var sqlInfo in sqlInfoList)
                 {
                     // SQL内で使用されているDBリストを取得
@@ -848,6 +872,7 @@ namespace ExecCobolAnalysis
                         int i = dbInfoList.FindIndex(x => x.Name_P == dbName);
                         if(i < 0)
                         {
+                            // 使用DBリストにためておく
                             _dbInfo = new DbInfo(dbName, sqlInfo.Type, dt);
                             dbInfoList.Add(_dbInfo);
                         }
@@ -855,7 +880,6 @@ namespace ExecCobolAnalysis
                         {
                             dbInfoList[i].SetCrudFlg(sqlInfo.Type);
                         }
-
                     }
                 }
                 IEnumerable<DbInfo> distinctList = dbInfoList.Distinct().OrderBy(x => x.Name_P);
