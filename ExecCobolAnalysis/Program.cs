@@ -219,17 +219,32 @@ namespace ExecCobolAnalysis
                                 if (!inMethodErea)
                                     continue;
 
+                                // 関数内のチェックポイントを特定
+                                Method leastMethod = methodList[methodList.Count - 1];
+                                if (leastMethod.DetectCheckPoint(arrWord[0]))
+                                {
+                                    leastMethod.CheckPointList.Add(arrWord[0]);
+                                    continue;
+                                }
+
                                 // 呼出関数・モジュールを特定
                                 if ((arrWord.Count() >= 2 && arrWord[0] == "PERFORM" && arrWord[1] != "VARYING")
-                                        || arrWord[0] == "CALL")
+                                    || arrWord[0] == "CALL")
                                 {
                                     bool moduleFlg = (arrWord[0] == "CALL") ? true : false;
-                                    string name = arrWord[1].Replace("'", "");
+                                    string name = arrWord[1].Replace("'", "").Replace("\"", "");
 
                                     if (moduleFlg)
                                         calledModuleList.Add(name);
 
                                     methodList[methodIndex].CalledMethodList.Add(new CalledMethod(name, moduleFlg, conditions));
+                                    continue;
+                                }
+
+                                if(arrWord.Count() >= 3 && arrWord[0] + " " + arrWord[1] == "GO TO")
+                                {
+                                    string name = arrWord[2].Replace("'", "");
+                                    methodList[methodIndex].CalledMethodList.Add(new CalledMethod(name, false, conditions));
                                     continue;
                                 }
 
@@ -588,6 +603,11 @@ namespace ExecCobolAnalysis
             }
         }
 
+        /// <summary>
+        /// 予約語の置換
+        /// </summary>
+        /// <param name="line"></param>
+        /// <returns></returns>
         private static string ReplaceReservedWord(string line)
         {
             string[] arrWord = line.Split(' ');
@@ -669,6 +689,17 @@ namespace ExecCobolAnalysis
                 return string.Empty;
         }
 
+        /// <summary>
+        /// SQL文を特定し、SQLリストに追加する
+        /// </summary>
+        /// <param name="division"></param>
+        /// <param name="arrWord"></param>
+        /// <param name="usedMethodName"></param>
+        /// <param name="sql"></param>
+        /// <param name="sqlType"></param>
+        /// <param name="sqlList"></param>
+        /// <param name="cursorName"></param>
+        /// <returns></returns>
         private static bool AddSqlList(Division division , string[] arrWord , string usedMethodName
                 , ref string sql, ref SqlType sqlType, ref List<SqlInfo> sqlList, ref string cursorName)
         {
@@ -1082,7 +1113,7 @@ namespace ExecCobolAnalysis
                 WsStruct.DefaultColWidth = 3;
 
                 // 起点となる関数名をExcelに書き込む
-                WriteMethod(methodList, 0, ref row, ref col, new CalledMethod(string.Empty, false, new List<string>()));
+                WriteMethod(methodList[0].MethodNameP, ColorMethod, 0, ref row, ref col, new CalledMethod(string.Empty, false, new List<string>()));
 
                 // 呼び出される関数名を再帰的にExcelに書き込む
                 GetCalledMethodRecursively(methodList, 0, row + 1, col + 2);
@@ -1101,35 +1132,22 @@ namespace ExecCobolAnalysis
         /// <summary>
         /// Excelに関数名を書き込む
         /// </summary>
-        /// <param name="methodList"></param>
+        /// <param name="writeTxt"></param>
         /// <param name="index"></param>
         /// <param name="row"></param>
         /// <param name="col"></param>
         /// <param name="cm"></param>
-        private static void WriteMethod(List<Method> methodList, int index, ref int row, ref int col, CalledMethod cm)
+        private static void WriteMethod(string writeTxt, Color writeColor, int index, ref int row, ref int col, CalledMethod cm)
         {
-            string outText = string.Empty;
-            Color outColor = ColorMethod;
             bool flg = false;
             WsStruct.Cells[row, col].Style.Numberformat.Format = "@";
-            if (cm.ModuleFlg)
-            {
-                // モジュール呼出の場合
-                outText = cm.Name;
-                outColor = ColorModule;
-            }
-            else if (index < 0 || index > methodList.Count)
-            {
-                outText = "不正な関数が指定されました。(" + cm.Name + ")";
-                outColor = Color.Red;
-            }
-            else
+            if (writeColor == ColorMethod)
             {
                 // 関数呼出の場合
 
                 if (!String.IsNullOrEmpty(cm.Conditions))
                 {
-                    // 条件分岐がある場合
+                    // 関数呼出に条件がある場合
                     WsStruct.Cells[row, col].Value = cm.Conditions;
                     WsStruct.Cells[row, col].Style.Font.Size = 9;
                     WsStruct.Cells[row + 1, col].Value = "└";
@@ -1140,14 +1158,13 @@ namespace ExecCobolAnalysis
 
                 // ハイパーリンクの設定
                 string linkSheetName = SheetName.Replace(CommonConst.SHEET_NAME_STRUCT, CommonConst.SHEET_NAME_METHODINFO);
-                outText = methodList[index].MethodNameP;
                 WsStruct.Cells[row, col].Hyperlink
-                    = new ExcelHyperLink("#'" + linkSheetName + "'!B" + (index + 3).ToString(), outText);
+                    = new ExcelHyperLink("#'" + linkSheetName + "'!B" + (index + 3).ToString(), writeTxt);
                 WsStruct.Cells[row, col].Style.Font.UnderLine = true;
             }
 
-            WsStruct.Cells[row, col].Value = outText;
-            WsStruct.Cells[row, col].Style.Font.Color.SetColor(outColor);
+            WsStruct.Cells[row, col].Value = writeTxt;
+            WsStruct.Cells[row, col].Style.Font.Color.SetColor(writeColor);
             if (flg)
                 col--;
         }
@@ -1162,18 +1179,53 @@ namespace ExecCobolAnalysis
         private static void GetCalledMethodRecursively(List<Method> methodList, int index, int row, int col)
         {
             // 関数内から呼び出している他関数・モジュールを読み込む
-            foreach (var calledMethod in methodList[index].CalledMethodList)
+            foreach (CalledMethod calledMethod in methodList[index].CalledMethodList)
             {
+                string writeTxt = string.Empty;
+                Color writeColor = ColorMethod;
+                int calledMethodIndex = -1;
+
+                if (calledMethod.ModuleFlg)
+                {
+                    // モジュール呼出の場合はExcelに書き込んですぐ次の呼び出し関数・モジュールへ
+                    WriteMethod(calledMethod.Name, ColorModule, -1, ref row, ref col, calledMethod);
+
+                    row++;
+                    InitRow = row;
+                    continue;
+                }
+
                 // 呼出関数名の、関数リスト内での位置を取得
-                int calledMethodIndex = GetMethodIndex(methodList, calledMethod);
+                calledMethodIndex = GetMethodIndex(methodList, calledMethod);
+
+                bool recursiveFlg = false;
+                if (calledMethodIndex < 0)
+                {
+                    // 関数内の位置を取得できなかった場合、関数内のチェックポイントへ遷移していないか確認する
+                    int[] indexes = GetCheckPointIndex(methodList, calledMethod);
+                    writeTxt = (indexes[0] < 0 || indexes[1] < 0)
+                        ? "不正な関数が指定されました。(" + calledMethod.Name + ")"
+                        : methodList[indexes[0]].CheckPointList[indexes[1]] + "(" + methodList[indexes[0]].MethodNameP + " 内チェックポイント)";
+
+                    writeColor = (indexes[0] < 0 || indexes[1] < 0)
+                        ? Color.Red
+                        : ColorMethod;
+
+                    calledMethodIndex = indexes[0];
+                }
+                else
+                {
+                    writeTxt = methodList[calledMethodIndex].MethodNameP;
+                    recursiveFlg = true;
+                }
 
                 // Excelに書き込む
-                WriteMethod(methodList, calledMethodIndex, ref row, ref col, calledMethod);
+                WriteMethod(writeTxt, writeColor, calledMethodIndex, ref row, ref col, calledMethod);
 
                 row++;
                 InitRow = row;
 
-                if (calledMethodIndex > -1)
+                if (recursiveFlg)
                 {
                     // 呼出先の関数内から呼び出している関数がないか、再帰的に探索する
                     GetCalledMethodRecursively(methodList, calledMethodIndex, row, col + 2);
@@ -1188,20 +1240,43 @@ namespace ExecCobolAnalysis
         /// <param name="methodList"></param>
         /// <param name="method"></param>
         /// <returns></returns>
-        private static int GetMethodIndex(IReadOnlyCollection<Method> methodList, CalledMethod cm)
+        private static int GetMethodIndex(List<Method> methodList, CalledMethod cm)
         {
             if (cm.ModuleFlg)
                 return -1;
 
-            int i = 0;
-            foreach (var method in methodList)
-            {
-                if (cm.Name == method.MethodNameP)
-                    return i;
+            var ret = methodList.FindIndex(method => { return method.MethodNameP.Equals(cm.Name); });
+            return ret;
+        }
 
+        /// <summary>
+        /// 指定されたチェックポイント名をもつ関数リスト内での位置を返す
+        /// </summary>
+        /// <param name="methodList"></param>
+        /// <param name="method"></param>
+        /// <returns></returns>
+        private static int[] GetCheckPointIndex(IReadOnlyCollection<Method> methodList, CalledMethod cm)
+        {
+            int[] retArr = { -1, -1 };
+            if (cm.ModuleFlg)
+                return retArr;
+
+            int methodIndex = -1;
+            int checkpointIndex = -1;
+            int i = 0;
+            foreach (Method method in methodList)
+            {
+                methodIndex = i;
+                checkpointIndex = method.CheckPointList.FindIndex(checkpoint => { return checkpoint.Equals(cm.Name); });
+
+                if (checkpointIndex > -1)
+                    break;
                 i++;
             }
-            return -1;
+
+            retArr[0] = methodIndex;
+            retArr[1] = checkpointIndex;
+            return retArr;
         }
         #endregion
 
@@ -1355,6 +1430,7 @@ namespace ExecCobolAnalysis
         public string MethodNameL { get; }
         public int StartIndex { get; }
         public int EndIndex { get; internal set; }
+        public List<string> CheckPointList { get; internal set; }
         public List<CalledMethod> CalledMethodList { get; internal set; }
         public bool CalledFlg { get; internal set; }
 
@@ -1364,8 +1440,18 @@ namespace ExecCobolAnalysis
             MethodNameL = methodNameL;
             StartIndex = startIndex;
             EndIndex = endIndex;
+            CheckPointList = new List<string>();
             CalledMethodList = new List<CalledMethod>();
             CalledFlg = false;
+        }
+
+        public bool DetectCheckPoint(string word)
+        {
+            // 引数が関数物理名を文字列中に含んでいれば、チェックポイント
+            if (word.Contains(MethodNameP.Replace("-PROC", "")))
+                return true;
+
+            return false;
         }
     }
 
