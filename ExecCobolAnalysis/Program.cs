@@ -272,10 +272,13 @@ namespace ExecCobolAnalysis
                                 // =================================================================
                                 if (inSqlErea)
                                 {
-                                    inSqlErea = AddSqlList(division, arrWord, methodList[methodIndex].MethodNameP, ref sql, ref sqlType, ref sqlInfoList, ref cursorName);
+                                    if(string.IsNullOrEmpty(cursorName))
+                                        inSqlErea = AddSqlList(division, arrWord, methodList[methodIndex].MethodNameP, ref sql, ref sqlType, ref sqlInfoList, ref cursorName);
+                                    else
+                                        inSqlErea = AddSqlList(division, arrWord, methodList[methodIndex].MethodNameP, ref sql, ref sqlType, ref cursorList, ref cursorName);
 
                                     // カーソルを呼び出している場合、SQL情報クラスに使用関数名をセット
-                                    if(arrWord.Length > 1 && arrWord[0] == "FETCH")
+                                    if (arrWord.Length > 1 && arrWord[0] == "FETCH")
                                     {
                                         foreach (var cursor in cursorList)
                                         {
@@ -482,6 +485,8 @@ namespace ExecCobolAnalysis
                 // 呼出先リストにある関数が、呼出フラグfalseの関数からのみ呼び出されていれば呼出フラグfalseにする
                 foreach (var method1 in calledMethodList)
                 {
+                    if(method1.MethodNameP == methodList[0].MethodNameP) { continue; }
+
                     // 呼出フラグをいったんfalseに
                     method1.CalledFlg = false;
                     int index = methodList.IndexOf(method1);
@@ -706,7 +711,8 @@ namespace ExecCobolAnalysis
             SqlInfo _sqlInfo = new SqlInfo();
 
             // カーソル物理名を特定
-            if(division == Division.DATA && arrWord.Length > 1 && arrWord[0] == "DECLARE")
+            if((division == Division.DATA || division == Division.PROCEDURE)
+                    && arrWord.Length > 2 && arrWord[0] == "DECLARE" && arrWord[2] == "CURSOR")
                 cursorName = arrWord[1];
 
             // SQLの処理区分を特定
