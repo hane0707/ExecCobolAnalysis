@@ -28,8 +28,8 @@ COBOLソースファイルを手動で解析する前に実行することで、
 1. Cドライブ直下に「ソース解析ツール」フォルダを配置<br>
 ⇒「C:\ソース解析ツール」<br>
 ※vscodeへの拡張機能追加を行わない場合、ここまでで完了。
-1. vscodeから使用する場合、拡張機能メニューを開き、メニュー右上の「…」をクリック⇒「VSIXからのインストール」を選択<img width="567" alt="1" src="https://user-images.githubusercontent.com/41313415/97319385-2b9dba80-18b0-11eb-9ba8-f5d0137ddb44.PNG">
-1. 解凍したフォルダ内にあるvsix拡張子のファイルを選択してインストール<img width="470" alt="2" src="https://user-images.githubusercontent.com/41313415/97319904-a7980280-18b0-11eb-94f3-3c1990d9feec.PNG">
+1. vscodeから使用する場合、拡張機能メニューを開き、メニュー右上の「…」をクリックし、「VSIXからのインストール」を選択<br><img width="567" alt="1" src="https://user-images.githubusercontent.com/41313415/97319385-2b9dba80-18b0-11eb-9ba8-f5d0137ddb44.PNG">
+1. 解凍したフォルダ内にあるvsix拡張子のファイルを選択してインストール<br><img width="470" alt="2" src="https://user-images.githubusercontent.com/41313415/97319904-a7980280-18b0-11eb-94f3-3c1990d9feec.PNG">
 
 # Usage
 ※以下、A, Bのどちらかを実行する。
