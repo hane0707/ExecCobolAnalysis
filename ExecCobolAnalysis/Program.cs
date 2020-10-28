@@ -221,7 +221,7 @@ namespace ExecCobolAnalysis
 
                                 // 関数内のチェックポイントを特定
                                 Method leastMethod = methodList[methodList.Count - 1];
-                                if (leastMethod.DetectCheckPoint(arrWord[0]))
+                                if (!inSqlErea && leastMethod.DetectCheckPoint(arrWord[0]))
                                 {
                                     leastMethod.CheckPointList.Add(arrWord[0]);
                                     continue;
