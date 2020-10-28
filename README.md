@@ -54,9 +54,5 @@ COBOLソースファイルを手動で解析する前に実行することで、
 「C:\ソース解析ツール\ExecCobolAnalysis」にログファイルが生成されます。
 
 # Note
-
 このリポジトリから全ての機能をダウンロード可能ですが、"Usage"に記載しているvscodeの拡張機能部分、windowsフォームアプリ部分のソースは別リポジトリにあります。（※このリポジトリではメイン処理のみを管理しています。）<br>
 必要に応じてそれぞれ「hane0707/cobol-sourceanalysisextention」、「hane0707/Cobol_SourceAnalysis」を参照してください。
-
-# License
-This software is released under the MIT License.
