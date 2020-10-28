@@ -11,17 +11,22 @@ COBOLソースファイルを手動で解析する前に実行することで、
 - カーソル一覧
 - 使用DB一覧
 - 使用DBのSELECT, UPDATEなどCRUDの一覧<br>
-※論理名への変換含む<br>
+
+<img width="571" alt="6" src="https://user-images.githubusercontent.com/41313415/97432490-5eeb5280-195f-11eb-8511-29903efde03c.PNG">
+
 ### 関数情報
 - 関数の一覧
 - 各関数内でのDB操作、および呼出カーソルの一覧
 - 各関数から呼び出されている関数の一覧
 - 上記呼出関数の内、別モジュールを呼び出している場合はピンク字にて表示
-- 到達できない関数はグレーアウトで表示
+- 到達できない関数はグレーアウトで表示<br>
+<img width="607" alt="4" src="https://user-images.githubusercontent.com/41313415/97432272-10d64f00-195f-11eb-8be2-52e8a80b4790.PNG">
+
 ### 構造図
 - 最初に呼び出される関数を起点に、関数の呼出構造を表示<br>
 ※IF文、EVALUATE文による条件分岐のみ対応
-- 構造図内の各ハイパーリンクから対応する関数情報シート内の項目へ遷移可能
+- 構造図内の各ハイパーリンクから対応する関数情報シート内の項目へ遷移可能<br>
+<img width="522" alt="5" src="https://user-images.githubusercontent.com/41313415/97432349-2ea3b400-195f-11eb-815a-df7eaa824482.PNG">
 
 # Installation
 1. zipファイルをReleasesからダウンロード＋任意の場所で解凍
@@ -32,7 +37,7 @@ COBOLソースファイルを手動で解析する前に実行することで、
 1. 解凍したフォルダ内にあるvsix拡張子のファイルを選択してインストール<br><img width="470" alt="2" src="https://user-images.githubusercontent.com/41313415/97319904-a7980280-18b0-11eb-94f3-3c1990d9feec.PNG">
 
 # Usage
-※以下、A, Bのどちらかを実行する。
+以下、A, Bのどちらかで実行可能です。
 ## Ａ．vscodeの拡張機能から解析
 ※特定のソースファイルを解析したい場合に使用
 1. 右クリックメニューから「COBOLソース解析」を選んで実行<br>
@@ -54,4 +59,4 @@ COBOLソースファイルを手動で解析する前に実行することで、
 必要に応じてそれぞれ「hane0707/cobol-sourceanalysisextention」、「hane0707/Cobol_SourceAnalysis」を参照してください。
 
 # License
-This software is released under the MIT License, see LICENSE.
+This software is released under the MIT License.
