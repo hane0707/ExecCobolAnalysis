@@ -29,7 +29,7 @@ COBOLソースファイルを手動で解析する前に実行することで、
 <img width="522" alt="5" src="https://user-images.githubusercontent.com/41313415/97432349-2ea3b400-195f-11eb-815a-df7eaa824482.PNG">
 
 # インストール
-1. zipファイルをReleasesからダウンロード＋任意の場所で解凍
+1. Releaseより、zipファイルをReleasesからダウンロード＋任意の場所で解凍
 1. Cドライブ直下に「ソース解析ツール」フォルダを配置<br>
 ⇒「C:\ソース解析ツール」<br>
 ※vscodeへの拡張機能追加を行わない場合、ここまでで完了。
