@@ -64,9 +64,13 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CalledMethod.cs" />
     <Compile Include="CommonConst.cs" />
+    <Compile Include="DbInfo.cs" />
+    <Compile Include="Method.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SqlInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
