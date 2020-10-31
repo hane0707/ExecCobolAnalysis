@@ -31,7 +31,7 @@ COBOLソースファイルを手動で解析する前に実行することで、
 # インストール
 1. Releaseより、cobolAnalysis.zipファイルをReleasesからダウンロード
 1. Cドライブ直下に解凍した「cobolAnalysis」フォルダを配置<br>
-⇒「C:\ソース解析ツール」<br>
+⇒「C:\cobolAnalysis」<br>
 ※vscodeへの拡張機能追加を行わない場合、ここまでで完了。
 1. vscodeから使用する場合、拡張機能メニューを開き、メニュー右上の「…」をクリックし、「VSIXからのインストール」を選択<br><img width="567" alt="1" src="https://user-images.githubusercontent.com/41313415/97319385-2b9dba80-18b0-11eb-9ba8-f5d0137ddb44.PNG">
 1. 解凍したフォルダ内にあるvsix拡張子のファイルを選択してインストール<br><img width="470" alt="2" src="https://user-images.githubusercontent.com/41313415/97319904-a7980280-18b0-11eb-94f3-3c1990d9feec.PNG">
@@ -44,14 +44,14 @@ COBOLソースファイルを手動で解析する前に実行することで、
 
 ## Ｂ．windowsフォームアプリから解析
 ※複数のソースファイルをまとめて解析したい場合に使用<br>
-1. 「C:\ソース解析ツール\Cobol_SourceAnalysis\Cobol_SourceAnalysis.exe」を実行<br>
+1. 「C:\cobolAnalysis\Cobol_SourceAnalysis\Cobol_SourceAnalysis.exe」を実行<br>
 1. フォームが開いたら「ファイル選択」から解析対象となるファイルを指定<br>
 1. 「実行」ボタン押下で実行
 
 <br>
 上記A, B実行後、<br>
-「C:\ソース解析ツール」直下に「COBOLソース解析結果.xlsx」が、<br>
-「C:\ソース解析ツール\ExecCobolAnalysis」にログファイルが生成されます。
+「C:\cobolAnalysis」直下に「COBOLソース解析結果.xlsx」が、<br>
+「C:\cobolAnalysis\ExecCobolAnalysis」にログファイルが生成されます。
 
 # その他
 このリポジトリから全ての機能をダウンロード可能ですが、"使い方"に記載しているvscodeの拡張機能部分、windowsフォームアプリ部分のソースは別リポジトリにあります。（※このリポジトリではメイン処理のみを管理しています。）<br>
