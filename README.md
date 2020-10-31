@@ -56,3 +56,5 @@ COBOLソースファイルを手動で解析する前に実行することで、
 # その他
 このリポジトリから全ての機能をダウンロード可能ですが、"使い方"に記載しているvscodeの拡張機能部分、windowsフォームアプリ部分のソースは別リポジトリにあります。（※このリポジトリではメイン処理のみを管理しています。）<br>
 必要に応じてそれぞれ「hane0707/cobol-sourceanalysisextention」、「hane0707/Cobol_SourceAnalysis」を参照してください。
+
+実装にあたり、クラスライブラリ[Transact-SQL-Helpers](https://github.com/kenny-evitt/Transact-SQL-Helpers)を参照しています。
