@@ -29,8 +29,8 @@ COBOLソースファイルを手動で解析する前に実行することで、
 <img width="522" alt="5" src="https://user-images.githubusercontent.com/41313415/97432349-2ea3b400-195f-11eb-815a-df7eaa824482.PNG">
 
 # インストール
-1. Releaseより、zipファイルをReleasesからダウンロード＋任意の場所で解凍
-1. Cドライブ直下に「ソース解析ツール」フォルダを配置<br>
+1. Releaseより、cobolAnalysis.zipファイルをReleasesからダウンロード
+1. Cドライブ直下に解凍した「cobolAnalysis」フォルダを配置<br>
 ⇒「C:\ソース解析ツール」<br>
 ※vscodeへの拡張機能追加を行わない場合、ここまでで完了。
 1. vscodeから使用する場合、拡張機能メニューを開き、メニュー右上の「…」をクリックし、「VSIXからのインストール」を選択<br><img width="567" alt="1" src="https://user-images.githubusercontent.com/41313415/97319385-2b9dba80-18b0-11eb-9ba8-f5d0137ddb44.PNG">
